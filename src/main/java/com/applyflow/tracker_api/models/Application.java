@@ -60,4 +60,7 @@ public class Application {
     @JoinTable(name = "application_skills", joinColumns = @JoinColumn(name = "application_id"), inverseJoinColumns = @JoinColumn(name = "skill_id"))
     @Builder.Default
     private Set<Skill> skills = new HashSet<>();
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "user_id", nullable = false)
+    private User user;
 }
