@@ -8,6 +8,7 @@ import org.springframework.security.oauth2.client.userinfo.OAuth2UserRequest;
 import org.springframework.security.oauth2.core.OAuth2AuthenticationException;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Optional;
 
@@ -18,16 +19,15 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
     private final UserRepository userRepository;
 
     @Override
+    @Transactional
     public OAuth2User loadUser(OAuth2UserRequest userRequest) throws OAuth2AuthenticationException {
-        // 1. Let Spring handle the standard background profile download from Google
+        // 1. Fetch user attributes from Google
         OAuth2User oAuth2User = super.loadUser(userRequest);
 
-        // 2. Extract Google attributes (sub is the unique Google ID, email is their
-        // address)
         String googleSub = oAuth2User.getAttribute("sub");
         String email = oAuth2User.getAttribute("email");
 
-        // 3. Database Sync: Check if this user exists, if not, save them right now
+        // 2. Sync profile metadata (We'll save tokens in the Success Handler next)
         Optional<User> existingUser = userRepository.findByGoogleSub(googleSub);
 
         if (existingUser.isEmpty()) {
@@ -36,9 +36,7 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
                     .email(email)
                     .build();
             userRepository.save(newUser);
-            System.out.println("🆕 Created new database user record for email: " + email);
-        } else {
-            System.out.println("👋 Welcome back existing user: " + email);
+            System.out.println("🆕 Database baseline record created for: " + email);
         }
 
         return oAuth2User;
