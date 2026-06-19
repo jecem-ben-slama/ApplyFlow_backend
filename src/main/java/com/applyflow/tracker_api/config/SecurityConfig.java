@@ -8,6 +8,11 @@ import org.springframework.context.annotation.Profile;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+
+import java.util.List;
 
 @Configuration
 @Profile("prod")
@@ -16,30 +21,33 @@ import org.springframework.security.web.SecurityFilterChain;
 public class SecurityConfig {
 
         private final CustomOAuth2UserService customOAuth2UserService;
-        private final OAuth2SuccessHandler oAuth2SuccessHandler; // Injecting the token sync handler
+        private final OAuth2SuccessHandler oAuth2SuccessHandler;
 
         @Bean
         public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
                 http
-                                // 1. Disable CSRF for REST API testing with Postman
+                                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                                 .csrf(csrf -> csrf.disable())
-
-                                // 2. Define Endpoint Permissions
                                 .authorizeHttpRequests(auth -> auth
-                                                // Allow anyone to hit the base homepage or login entry points
                                                 .requestMatchers("/", "/login/**", "/oauth2/**").permitAll()
-                                                // Absolutely every other tracking endpoint requires a logged-in Google
-                                                // session
                                                 .anyRequest().authenticated())
-
-                                // 3. Configure Google OAuth2 Login
                                 .oauth2Login(oauth2 -> oauth2
-                                                // Link Spring's login handler directly to our database sync service
                                                 .userInfoEndpoint(userInfo -> userInfo
                                                                 .userService(customOAuth2UserService))
-                                                // Fires immediately after a successful authentication to grab tokens
                                                 .successHandler(oAuth2SuccessHandler));
 
                 return http.build();
+        }
+
+        @Bean
+        public CorsConfigurationSource corsConfigurationSource() {
+                CorsConfiguration configuration = new CorsConfiguration();
+                configuration.setAllowedOrigins(List.of("https://your-prod-domain.com"));
+                configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
+                configuration.setAllowedHeaders(List.of("*"));
+                configuration.setAllowCredentials(true);
+                UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+                source.registerCorsConfiguration("/api/**", configuration);
+                return source;
         }
 }
