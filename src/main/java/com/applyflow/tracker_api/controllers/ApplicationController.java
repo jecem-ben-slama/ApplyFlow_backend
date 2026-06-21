@@ -1,6 +1,6 @@
 package com.applyflow.tracker_api.controllers;
 
-import com.applyflow.tracker_api.config.CustomOAuth2User;
+import com.applyflow.tracker_api.config.SecurityContextService;
 import com.applyflow.tracker_api.dtos.ApiResponse;
 import com.applyflow.tracker_api.dtos.ApplicationCreateDto;
 import com.applyflow.tracker_api.dtos.ApplicationResponseDto;
@@ -14,7 +14,6 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.stream.Collectors;
@@ -25,14 +24,14 @@ import java.util.stream.Collectors;
 public class ApplicationController {
 
     private final ApplicationService applicationService;
+    private final SecurityContextService securityContextService;
 
     @PostMapping
     public ResponseEntity<ApiResponse<ApplicationResponseDto>> createApplication(
-            @AuthenticationPrincipal CustomOAuth2User principal,
             @RequestBody ApplicationCreateDto dto) {
 
-        // Force the active user's ID into the creation DTO for processing safety
-        dto.setUserId(principal.getId());
+        Long userId = securityContextService.getCurrentUserId();
+        dto.setUserId(userId);
 
         Application compiled = applicationService.createAndCompileApplication(dto);
         return new ResponseEntity<>(
@@ -42,46 +41,45 @@ public class ApplicationController {
 
     @GetMapping
     public ResponseEntity<ApiResponse<Page<ApplicationResponseDto>>> getAllApplications(
-            @AuthenticationPrincipal CustomOAuth2User principal,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size,
             @RequestParam(defaultValue = "dateApplied") String sortBy,
             @RequestParam(defaultValue = "desc") String direction) {
 
+        Long userId = securityContextService.getCurrentUserId();
+
         Sort sort = direction.equalsIgnoreCase("desc") ? Sort.by(sortBy).descending() : Sort.by(sortBy).ascending();
         Pageable pageable = PageRequest.of(page, size, sort);
 
         Page<ApplicationResponseDto> responseData = applicationService
-                .getAllApplicationsForUser(principal.getId(), pageable)
+                .getAllApplicationsForUser(userId, pageable)
                 .map(this::convertToDto);
 
         return ResponseEntity.ok(ApiResponse.success("User tracking history retrieved successfully", responseData));
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<ApiResponse<ApplicationResponseDto>> getApplicationById(
-            @AuthenticationPrincipal CustomOAuth2User principal,
-            @PathVariable Long id) {
-        Application app = applicationService.getApplicationByIdAndUser(id, principal.getId());
+    public ResponseEntity<ApiResponse<ApplicationResponseDto>> getApplicationById(@PathVariable Long id) {
+        Long userId = securityContextService.getCurrentUserId();
+        Application app = applicationService.getApplicationByIdAndUser(id, userId);
         return ResponseEntity.ok(ApiResponse.success("Application details retrieved successfully", convertToDto(app)));
     }
 
     @PatchMapping("/{id}")
     public ResponseEntity<ApiResponse<ApplicationResponseDto>> patchApplicationStatusOrNotes(
-            @AuthenticationPrincipal CustomOAuth2User principal,
             @PathVariable Long id,
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String notes) {
 
-        Application updated = applicationService.updateApplicationStatusOrNotes(id, principal.getId(), status, notes);
+        Long userId = securityContextService.getCurrentUserId();
+        Application updated = applicationService.updateApplicationStatusOrNotes(id, userId, status, notes);
         return ResponseEntity.ok(ApiResponse.success("Application state modified successfully", convertToDto(updated)));
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<ApiResponse<Void>> deleteApplication(
-            @AuthenticationPrincipal CustomOAuth2User principal,
-            @PathVariable Long id) {
-        applicationService.deleteApplication(id, principal.getId());
+    public ResponseEntity<ApiResponse<Void>> deleteApplication(@PathVariable Long id) {
+        Long userId = securityContextService.getCurrentUserId();
+        applicationService.deleteApplication(id, userId);
         return ResponseEntity.ok(ApiResponse.success("Application tracking record deleted successfully"));
     }
 

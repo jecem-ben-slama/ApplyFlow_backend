@@ -1,6 +1,6 @@
 package com.applyflow.tracker_api.controllers;
 
-import com.applyflow.tracker_api.config.CustomOAuth2User;
+import com.applyflow.tracker_api.config.SecurityContextService;
 import com.applyflow.tracker_api.dtos.ApiResponse;
 import com.applyflow.tracker_api.dtos.TemplateDto;
 import com.applyflow.tracker_api.models.Template;
@@ -13,7 +13,6 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -21,93 +20,103 @@ import org.springframework.web.bind.annotation.*;
 @RequiredArgsConstructor
 public class TemplateController {
 
-    private final TemplateService templateService;
+        private final TemplateService templateService;
+        private final SecurityContextService securityContextService;
 
-    @PostMapping
-    public ResponseEntity<ApiResponse<TemplateDto>> createTemplate(
-            @AuthenticationPrincipal CustomOAuth2User principal,
-            @RequestBody TemplateDto dto) {
+        @PostMapping
+        public ResponseEntity<ApiResponse<TemplateDto>> createTemplate(@RequestBody TemplateDto dto) {
+                Long userId = securityContextService.getCurrentUserId();
 
-        Template entity = Template.builder()
-                .name(dto.getName())
-                .language(dto.getLanguage())
-                .tier(dto.getTier())
-                .subjectTemplate(dto.getSubjectTemplate())
-                .bodyTemplate(dto.getBodyTemplate())
-                .user(User.builder().id(principal.getId()).build())
-                .build();
+                Template entity = Template.builder()
+                                .name(dto.getName())
+                                .language(dto.getLanguage())
+                                .tier(dto.getTier())
+                                .subjectTemplate(dto.getSubjectTemplate())
+                                .bodyTemplate(dto.getBodyTemplate())
+                                .user(User.builder().id(userId).build())
+                                .build();
 
-        Template saved = templateService.createTemplate(entity);
-        return new ResponseEntity<>(
-                ApiResponse.success("Template created successfully", convertToDto(saved)),
-                HttpStatus.CREATED);
-    }
+                Template saved = templateService.createTemplate(entity);
+                return new ResponseEntity<>(
+                                ApiResponse.success("Template created successfully", convertToDto(saved)),
+                                HttpStatus.CREATED);
+        }
 
-    @GetMapping
-    public ResponseEntity<ApiResponse<Page<TemplateDto>>> getAllTemplates(
-            @AuthenticationPrincipal CustomOAuth2User principal,
-            @RequestParam(required = false) String language,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "10") int size,
-            @RequestParam(defaultValue = "id") String sortBy,
-            @RequestParam(defaultValue = "asc") String direction) {
+        @GetMapping
+        public ResponseEntity<ApiResponse<Page<TemplateDto>>> getAllTemplates(
+                        @RequestParam(required = false) String language,
+                        @RequestParam(defaultValue = "0") int page,
+                        @RequestParam(defaultValue = "10") int size,
+                        @RequestParam(defaultValue = "id") String sortBy,
+                        @RequestParam(defaultValue = "asc") String direction) {
 
-        Sort sort = direction.equalsIgnoreCase("desc") ? Sort.by(sortBy).descending() : Sort.by(sortBy).ascending();
-        Pageable pageable = PageRequest.of(page, size, sort);
+                Long userId = securityContextService.getCurrentUserId();
 
-        Page<Template> templates = (language != null)
-                ? templateService.getTemplatesForUserByLanguage(principal.getId(), language, pageable)
-                : templateService.getTemplatesForUser(principal.getId(), pageable);
+                Sort sort = direction.equalsIgnoreCase("desc") ? Sort.by(sortBy).descending()
+                                : Sort.by(sortBy).ascending();
+                Pageable pageable = PageRequest.of(page, size, sort);
 
-        Page<TemplateDto> dtos = templates.map(this::convertToDto);
-        return ResponseEntity.ok(ApiResponse.success("Templates retrieved successfully", dtos));
-    }
+                Page<Template> templates = (language != null)
+                                ? templateService.getTemplatesForUserByLanguage(userId, language, pageable)
+                                : templateService.getTemplatesForUser(userId, pageable);
 
-    @GetMapping("/{id}")
-    public ResponseEntity<ApiResponse<TemplateDto>> getTemplateById(
-            @AuthenticationPrincipal CustomOAuth2User principal,
-            @PathVariable Long id) {
-        Template template = templateService.getTemplateByIdAndUser(id, principal.getId());
-        return ResponseEntity.ok(ApiResponse.success("Template retrieved successfully", convertToDto(template)));
-    }
+                Page<TemplateDto> dtos = templates.map(this::convertToDto);
+                return ResponseEntity.ok(ApiResponse.success("Templates retrieved successfully", dtos));
+        }
 
-    @PutMapping("/{id}")
-    public ResponseEntity<ApiResponse<TemplateDto>> updateTemplate(
-            @AuthenticationPrincipal CustomOAuth2User principal,
-            @PathVariable Long id,
-            @RequestBody TemplateDto dto) {
+        @GetMapping("/{id}")
+        public ResponseEntity<ApiResponse<TemplateDto>> getTemplateById(@PathVariable Long id) {
+                Long userId = securityContextService.getCurrentUserId();
 
-        Template details = Template.builder()
-                .name(dto.getName())
-                .language(dto.getLanguage())
-                .tier(dto.getTier())
-                .subjectTemplate(dto.getSubjectTemplate())
-                .bodyTemplate(dto.getBodyTemplate())
-                .build();
+                Template template = templateService.getTemplateByIdAndUser(id, userId);
+                if (template == null) {
+                        throw new IllegalArgumentException("Template not found with ID: " + id);
+                }
 
-        Template updated = templateService.updateTemplate(id, principal.getId(), details);
-        return ResponseEntity.ok(ApiResponse.success("Template updated successfully", convertToDto(updated)));
-    }
+                return ResponseEntity
+                                .ok(ApiResponse.success("Template retrieved successfully", convertToDto(template)));
+        }
 
-    @DeleteMapping("/{id}")
-    public ResponseEntity<ApiResponse<Void>> deleteTemplate(
-            @AuthenticationPrincipal CustomOAuth2User principal,
-            @PathVariable Long id) {
-        templateService.deleteTemplate(id, principal.getId());
-        return ResponseEntity.ok(ApiResponse.success("Template deleted successfully"));
-    }
+        @PutMapping("/{id}")
+        public ResponseEntity<ApiResponse<TemplateDto>> updateTemplate(
+                        @PathVariable Long id,
+                        @RequestBody TemplateDto dto) {
 
-    private TemplateDto convertToDto(Template template) {
-        return TemplateDto.builder()
-                .id(template.getId())
-                .name(template.getName())
-                .language(template.getLanguage())
-                .tier(template.getTier())
-                .subjectTemplate(template.getSubjectTemplate())
-                .bodyTemplate(template.getBodyTemplate())
-                .createdAt(template.getCreatedAt())
-                .updatedAt(template.getUpdatedAt())
-                .userId(template.getUser() != null ? template.getUser().getId() : null)
-                .build();
-    }
+                Long userId = securityContextService.getCurrentUserId();
+
+                Template details = Template.builder()
+                                .name(dto.getName())
+                                .language(dto.getLanguage())
+                                .tier(dto.getTier())
+                                .subjectTemplate(dto.getSubjectTemplate())
+                                .bodyTemplate(dto.getBodyTemplate())
+                                .build();
+
+                Template updated = templateService.updateTemplate(id, userId, details);
+                return ResponseEntity.ok(ApiResponse.success("Template updated successfully", convertToDto(updated)));
+        }
+
+        @DeleteMapping("/{id}")
+        public ResponseEntity<ApiResponse<Void>> deleteTemplate(@PathVariable Long id) {
+                Long userId = securityContextService.getCurrentUserId();
+                templateService.deleteTemplate(id, userId);
+                return ResponseEntity.ok(ApiResponse.success("Template deleted successfully"));
+        }
+
+        private TemplateDto convertToDto(Template template) {
+                if (template == null)
+                        return null;
+
+                return TemplateDto.builder()
+                                .id(template.getId())
+                                .name(template.getName())
+                                .language(template.getLanguage())
+                                .tier(template.getTier())
+                                .subjectTemplate(template.getSubjectTemplate())
+                                .bodyTemplate(template.getBodyTemplate())
+                                .createdAt(template.getCreatedAt())
+                                .updatedAt(template.getUpdatedAt())
+                                .userId(template.getUser() != null ? template.getUser().getId() : null)
+                                .build();
+        }
 }

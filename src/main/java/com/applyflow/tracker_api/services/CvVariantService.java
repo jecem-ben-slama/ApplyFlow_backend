@@ -3,9 +3,10 @@ package com.applyflow.tracker_api.services;
 import com.applyflow.tracker_api.models.CvVariant;
 import com.applyflow.tracker_api.repositories.CvVariantRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import java.util.List;
 
 @Service
 @RequiredArgsConstructor
@@ -17,12 +18,12 @@ public class CvVariantService {
         return cvVariantRepository.save(cvVariant);
     }
 
-    public List<CvVariant> getCvVariantsForUser(Long userId) {
-        return cvVariantRepository.findByUserId(userId);
+    public Page<CvVariant> getCvVariantsForUser(Long userId, Pageable pageable) {
+        return cvVariantRepository.findByUserId(userId, pageable);
     }
 
-    public List<CvVariant> getCvVariantsForUserByLanguage(Long userId, String language) {
-        return cvVariantRepository.findByUserIdAndLanguage(userId, language);
+    public Page<CvVariant> getCvVariantsForUserByLanguage(Long userId, String language, Pageable pageable) {
+        return cvVariantRepository.findByUserIdAndLanguage(userId, language, pageable);
     }
 
     public CvVariant getCvVariantByIdAndUser(Long id, Long userId) {
