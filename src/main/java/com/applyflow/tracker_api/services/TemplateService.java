@@ -19,18 +19,22 @@ public class TemplateService {
         return templateRepository.save(template);
     }
 
-    public Page<Template> getAllTemplates(Pageable pageable) {
-        return templateRepository.findAll(pageable);
+    public Page<Template> getTemplatesForUser(Long userId, Pageable pageable) {
+        return templateRepository.findByUserId(userId, pageable);
     }
 
-    public Template getTemplateById(Long id) {
-        return templateRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Template not found with id: " + id));
+    public Page<Template> getTemplatesForUserByLanguage(Long userId, String language, Pageable pageable) {
+        return templateRepository.findByUserIdAndLanguage(userId, language, pageable);
+    }
+
+    public Template getTemplateByIdAndUser(Long id, Long userId) {
+        return templateRepository.findByIdAndUserId(id, userId)
+                .orElseThrow(() -> new RuntimeException("Template not found or access denied."));
     }
 
     @Transactional
-    public Template updateTemplate(Long id, Template templateDetails) {
-        Template existingTemplate = getTemplateById(id);
+    public Template updateTemplate(Long id, Long userId, Template templateDetails) {
+        Template existingTemplate = getTemplateByIdAndUser(id, userId);
 
         existingTemplate.setName(templateDetails.getName());
         existingTemplate.setLanguage(templateDetails.getLanguage());
@@ -42,8 +46,9 @@ public class TemplateService {
         return templateRepository.save(existingTemplate);
     }
 
-    public void deleteTemplate(Long id) {
-        Template template = getTemplateById(id);
+    @Transactional
+    public void deleteTemplate(Long id, Long userId) {
+        Template template = getTemplateByIdAndUser(id, userId);
         templateRepository.delete(template);
     }
 }

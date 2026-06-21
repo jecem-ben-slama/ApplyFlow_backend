@@ -10,7 +10,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.HashSet;
-import java.util.List;
 import java.util.Set;
 
 @Service
@@ -25,20 +24,28 @@ public class ApplicationService {
 
     @Transactional
     public Application createAndCompileApplication(ApplicationCreateDto dto) {
-        // 1. Validate and fetch all required dependencies
+        // 1. Validate and fetch all required dependencies scoped strictly to the
+        // current user
         User user = userRepository.findById(dto.getUserId())
                 .orElseThrow(() -> new RuntimeException("User not found with id: " + dto.getUserId()));
 
-        Template template = templateRepository.findById(dto.getTemplateId())
-                .orElseThrow(() -> new RuntimeException("Template not found with id: " + dto.getTemplateId()));
+        Template template = templateRepository.findByIdAndUserId(dto.getTemplateId(), dto.getUserId())
+                .orElseThrow(() -> new RuntimeException(
+                        "Template not found or access denied for id: " + dto.getTemplateId()));
 
-        CvVariant cvVariant = cvVariantRepository.findById(dto.getCvVariantId())
-                .orElseThrow(() -> new RuntimeException("CV Variant not found with id: " + dto.getCvVariantId()));
+        CvVariant cvVariant = cvVariantRepository.findByIdAndUserId(dto.getCvVariantId(), dto.getUserId())
+                .orElseThrow(() -> new RuntimeException(
+                        "CV Variant not found or access denied for id: " + dto.getCvVariantId()));
 
-        List<Skill> skillsList = skillRepository.findAllById(dto.getSkillIds());
-        Set<Skill> selectedSkills = new HashSet<>(skillsList);
+        // Ensure skills fetched belong to this user
+        Set<Skill> selectedSkills = new HashSet<>();
+        for (Long skillId : dto.getSkillIds()) {
+            Skill skill = skillRepository.findByIdAndUserId(skillId, dto.getUserId())
+                    .orElseThrow(() -> new RuntimeException("Skill not found or access denied for id: " + skillId));
+            selectedSkills.add(skill);
+        }
 
-        // 2. Stitch the Subject Line Template (Supports both {{position}} and {{role}})
+        // 2. Stitch the Subject Line Template
         String compiledSubject = template.getSubjectTemplate()
                 .replace("{{position}}", dto.getJobTitle())
                 .replace("{{role}}", dto.getJobTitle())
@@ -56,12 +63,10 @@ public class ApplicationService {
             skillsBulletPoints.append("\n");
         }
 
-        // 4. Stitch the Core Email Body (Handles flexible tags + safe skills rendering)
+        // 4. Stitch the Core Email Body
         String skillsContent = skillsBulletPoints.toString().trim();
         String bodyTemplate = template.getBodyTemplate();
 
-        // If the template doesn't explicitly contain the block placeholder, append it
-        // to the bottom
         if (!bodyTemplate.contains("{{skills_block}}") && !skillsContent.isEmpty()) {
             bodyTemplate += "\n\n{{skills_block}}";
         }
@@ -72,7 +77,7 @@ public class ApplicationService {
                 .replace("{{company}}", dto.getCompanyName())
                 .replace("{{skills_block}}", skillsContent);
 
-        // 5. Build and save the application persistence layer entry
+        // 5. Build and save the application
         Application application = Application.builder()
                 .companyName(dto.getCompanyName())
                 .jobTitle(dto.getJobTitle())
@@ -90,18 +95,18 @@ public class ApplicationService {
         return applicationRepository.save(application);
     }
 
-    public Page<Application> getAllApplications(Pageable pageable) {
-        return applicationRepository.findAll(pageable);
+    public Page<Application> getAllApplicationsForUser(Long userId, Pageable pageable) {
+        return applicationRepository.findByUserId(userId, pageable);
     }
 
-    public Application getApplicationById(Long id) {
-        return applicationRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Application tracking record not found with id: " + id));
+    public Application getApplicationByIdAndUser(Long id, Long userId) {
+        return applicationRepository.findByIdAndUserId(id, userId)
+                .orElseThrow(() -> new RuntimeException("Application tracking record not found or access denied."));
     }
 
     @Transactional
-    public Application updateApplicationStatusOrNotes(Long id, String status, String notes) {
-        Application existing = getApplicationById(id);
+    public Application updateApplicationStatusOrNotes(Long id, Long userId, String status, String notes) {
+        Application existing = getApplicationByIdAndUser(id, userId);
         if (status != null)
             existing.setStatus(status);
         if (notes != null)
@@ -109,8 +114,9 @@ public class ApplicationService {
         return applicationRepository.save(existing);
     }
 
-    public void deleteApplication(Long id) {
-        Application app = getApplicationById(id);
+    @Transactional
+    public void deleteApplication(Long id, Long userId) {
+        Application app = getApplicationByIdAndUser(id, userId);
         applicationRepository.delete(app);
     }
 }

@@ -14,4 +14,5 @@ public class CvVariantDto {
     private String language;
     private String fileUrl;
     private LocalDateTime createdAt;
+    private Long userId; // <-- Linked to single user ownership
 }

@@ -84,6 +84,6 @@ public class OAuth2SuccessHandler implements AuthenticationSuccessHandler {
         System.out.println("💾 Database record permanently committed for: " + user.getEmail());
 
         // Redirect the user to your frontend dashboard application
-        response.sendRedirect("http://localhost:3000/dashboard");
+        response.sendRedirect("http://localhost:4200/");
     }
 }

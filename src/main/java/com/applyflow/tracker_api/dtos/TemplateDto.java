@@ -17,4 +17,5 @@ public class TemplateDto {
     private String bodyTemplate;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+    private Long userId; // <-- Linked to single user ownership
 }

@@ -15,43 +15,40 @@ public class SkillService {
 
     private final SkillRepository skillRepository;
 
-    // CREATE
     @Transactional
     public Skill createSkill(Skill skill) {
-        // Standardize the technical name to lowercase and trim spaces
         String cleanTechName = skill.getTechnicalName().toLowerCase().trim();
 
-        if (skillRepository.findByTechnicalName(cleanTechName).isPresent()) {
-            throw new IllegalArgumentException("A skill with technical name '" + cleanTechName + "' already exists.");
+        // Check uniqueness strictly per user
+        if (skillRepository.findByUserIdAndTechnicalName(skill.getUser().getId(), cleanTechName).isPresent()) {
+            throw new IllegalArgumentException(
+                    "A skill with technical name '" + cleanTechName + "' already exists for this user.");
         }
 
         skill.setTechnicalName(cleanTechName);
         return skillRepository.save(skill);
     }
 
-    public Page<Skill> getAllSkills(Pageable pageable) {
-        return skillRepository.findAll(pageable);
+    public Page<Skill> getSkillsForUser(Long userId, Pageable pageable) {
+        return skillRepository.findByUserId(userId, pageable);
     }
 
-    // READ ONE
-    public Skill getSkillById(Long id) {
-        return skillRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("Skill not found with ID: " + id));
+    public Skill getSkillByIdAndUser(Long id, Long userId) {
+        return skillRepository.findByIdAndUserId(id, userId)
+                .orElseThrow(() -> new IllegalArgumentException("Skill not found or access denied."));
     }
 
-    // UPDATE
     @Transactional
-    public Skill updateSkill(Long id, Skill skillDetails) {
-        Skill existingSkill = getSkillById(id);
+    public Skill updateSkill(Long id, Long userId, Skill skillDetails) {
+        Skill existingSkill = getSkillByIdAndUser(id, userId);
 
         existingSkill.setDisplayName(skillDetails.getDisplayName());
         existingSkill.setSentenceEn(skillDetails.getSentenceEn());
         existingSkill.setSentenceFr(skillDetails.getSentenceFr());
 
-        // Update technical name carefully while preserving unique constraint checks
         String cleanTechName = skillDetails.getTechnicalName().toLowerCase().trim();
         if (!existingSkill.getTechnicalName().equals(cleanTechName) &&
-                skillRepository.findByTechnicalName(cleanTechName).isPresent()) {
+                skillRepository.findByUserIdAndTechnicalName(userId, cleanTechName).isPresent()) {
             throw new IllegalArgumentException("Another skill already uses the name: " + cleanTechName);
         }
         existingSkill.setTechnicalName(cleanTechName);
@@ -59,10 +56,9 @@ public class SkillService {
         return skillRepository.save(existingSkill);
     }
 
-    // DELETE
     @Transactional
-    public void deleteSkill(Long id) {
-        Skill skill = getSkillById(id);
+    public void deleteSkill(Long id, Long userId) {
+        Skill skill = getSkillByIdAndUser(id, userId);
         skillRepository.delete(skill);
     }
 }

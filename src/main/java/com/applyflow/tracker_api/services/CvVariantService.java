@@ -17,18 +17,22 @@ public class CvVariantService {
         return cvVariantRepository.save(cvVariant);
     }
 
-    public List<CvVariant> getAllCvVariants() {
-        return cvVariantRepository.findAll();
+    public List<CvVariant> getCvVariantsForUser(Long userId) {
+        return cvVariantRepository.findByUserId(userId);
     }
 
-    public CvVariant getCvVariantById(Long id) {
-        return cvVariantRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("CV Variant not found with id: " + id));
+    public List<CvVariant> getCvVariantsForUserByLanguage(Long userId, String language) {
+        return cvVariantRepository.findByUserIdAndLanguage(userId, language);
+    }
+
+    public CvVariant getCvVariantByIdAndUser(Long id, Long userId) {
+        return cvVariantRepository.findByIdAndUserId(id, userId)
+                .orElseThrow(() -> new RuntimeException("CV Variant not found or access denied."));
     }
 
     @Transactional
-    public CvVariant updateCvVariant(Long id, CvVariant details) {
-        CvVariant existing = getCvVariantById(id);
+    public CvVariant updateCvVariant(Long id, Long userId, CvVariant details) {
+        CvVariant existing = getCvVariantByIdAndUser(id, userId);
 
         existing.setName(details.getName());
         existing.setLanguage(details.getLanguage());
@@ -37,8 +41,9 @@ public class CvVariantService {
         return cvVariantRepository.save(existing);
     }
 
-    public void deleteCvVariant(Long id) {
-        CvVariant cv = getCvVariantById(id);
+    @Transactional
+    public void deleteCvVariant(Long id, Long userId) {
+        CvVariant cv = getCvVariantByIdAndUser(id, userId);
         cvVariantRepository.delete(cv);
     }
 }

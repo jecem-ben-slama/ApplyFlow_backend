@@ -1,8 +1,10 @@
 package com.applyflow.tracker_api.controllers;
 
+import com.applyflow.tracker_api.config.SecurityContextService;
 import com.applyflow.tracker_api.dtos.ApiResponse;
 import com.applyflow.tracker_api.dtos.SkillDto;
 import com.applyflow.tracker_api.models.Skill;
+import com.applyflow.tracker_api.models.User;
 import com.applyflow.tracker_api.services.SkillService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -18,92 +20,86 @@ import org.springframework.web.bind.annotation.*;
 @RequiredArgsConstructor
 public class SkillController {
 
-    private final SkillService skillService;
+        private final SkillService skillService;
+        private final SecurityContextService securityContextService;
 
-    @PostMapping
-    public ResponseEntity<ApiResponse<SkillDto>> createSkill(@RequestBody SkillDto skillDto) {
-        Skill skillEntity = Skill.builder()
-                .displayName(skillDto.getDisplayName())
-                .technicalName(skillDto.getTechnicalName())
-                .sentenceEn(skillDto.getSentenceEn())
-                .sentenceFr(skillDto.getSentenceFr())
-                .build();
+        @PostMapping
+        public ResponseEntity<ApiResponse<SkillDto>> createSkill(@RequestBody SkillDto skillDto) {
+                Long userId = securityContextService.getCurrentUserId();
+                User userContext = User.builder().id(userId).build();
 
-        Skill savedSkill = skillService.createSkill(skillEntity);
-        SkillDto responseData = convertToDto(savedSkill);
+                Skill skillEntity = Skill.builder()
+                                .displayName(skillDto.getDisplayName())
+                                .technicalName(skillDto.getTechnicalName())
+                                .sentenceEn(skillDto.getSentenceEn())
+                                .sentenceFr(skillDto.getSentenceFr())
+                                .user(userContext)
+                                .build();
 
-        return new ResponseEntity<>(
-                ApiResponse.success("Skill created successfully", responseData),
-                HttpStatus.CREATED);
-    }
+                Skill savedSkill = skillService.createSkill(skillEntity);
+                return new ResponseEntity<>(
+                                ApiResponse.success("Skill created successfully", convertToDto(savedSkill)),
+                                HttpStatus.CREATED);
+        }
 
-    @GetMapping
-    public ResponseEntity<ApiResponse<Page<SkillDto>>> getAllSkills(
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "10") int size,
-            @RequestParam(defaultValue = "id") String sortBy,
-            @RequestParam(defaultValue = "asc") String direction) {
+        @GetMapping
+        public ResponseEntity<ApiResponse<Page<SkillDto>>> getAllSkills(
+                        @RequestParam(defaultValue = "0") int page,
+                        @RequestParam(defaultValue = "10") int size,
+                        @RequestParam(defaultValue = "id") String sortBy,
+                        @RequestParam(defaultValue = "asc") String direction) {
 
-        // 1. Set up the sorting direction
-        Sort sort = direction.equalsIgnoreCase("desc")
-                ? Sort.by(sortBy).descending()
-                : Sort.by(sortBy).ascending();
+                Long userId = securityContextService.getCurrentUserId();
 
-        // 2. Create the Pageable object
-        Pageable pageable = PageRequest.of(page, size, sort);
+                Sort sort = direction.equalsIgnoreCase("desc") ? Sort.by(sortBy).descending()
+                                : Sort.by(sortBy).ascending();
+                Pageable pageable = PageRequest.of(page, size, sort);
 
-        // 3. Get paged entities from service and map them cleanly to DTOs
-        Page<SkillDto> pagedDtos = skillService.getAllSkills(pageable)
-                .map(this::convertToDto);
+                Page<SkillDto> responseData = skillService.getSkillsForUser(userId, pageable)
+                                .map(this::convertToDto);
 
-        return ResponseEntity.ok(ApiResponse.success("Master skills retrieved successfully", pagedDtos));
-    }
+                return ResponseEntity.ok(ApiResponse.success("Skills retrieved successfully", responseData));
+        }
 
-    @DeleteMapping("/{id}")
-    public ResponseEntity<ApiResponse<Void>> deleteSkill(@PathVariable Long id) {
-        skillService.deleteSkill(id);
-        return ResponseEntity.ok(ApiResponse.success("Skill deleted successfully"));
-    }
+        @GetMapping("/{id}")
+        public ResponseEntity<ApiResponse<SkillDto>> getSkillById(@PathVariable Long id) {
+                Long userId = securityContextService.getCurrentUserId();
+                Skill skill = skillService.getSkillByIdAndUser(id, userId);
+                return ResponseEntity.ok(ApiResponse.success("Skill retrieved successfully", convertToDto(skill)));
+        }
 
-    private SkillDto convertToDto(Skill skill) {
-        return SkillDto.builder()
-                .id(skill.getId())
-                .displayName(skill.getDisplayName())
-                .technicalName(skill.getTechnicalName())
-                .sentenceEn(skill.getSentenceEn())
-                .sentenceFr(skill.getSentenceFr())
-                .build();
-    }
-    
-    @PutMapping("/{id}")
-    public ResponseEntity<ApiResponse<SkillDto>> updateSkill(
-            @PathVariable Long id,
-            @RequestBody SkillDto skillDto) {
+        @PutMapping("/{id}")
+        public ResponseEntity<ApiResponse<SkillDto>> updateSkill(@PathVariable Long id,
+                        @RequestBody SkillDto skillDto) {
+                Long userId = securityContextService.getCurrentUserId();
 
-        // 1. Map the incoming DTO data to your entity structure
-        Skill skillDetails = Skill.builder()
-                .displayName(skillDto.getDisplayName())
-                .technicalName(skillDto.getTechnicalName())
-                .sentenceEn(skillDto.getSentenceEn())
-                .sentenceFr(skillDto.getSentenceFr())
-                .build();
+                Skill skillDetails = Skill.builder()
+                                .displayName(skillDto.getDisplayName())
+                                .technicalName(skillDto.getTechnicalName())
+                                .sentenceEn(skillDto.getSentenceEn())
+                                .sentenceFr(skillDto.getSentenceFr())
+                                .build();
 
-        // 2. Pass both the ID and the details to the service layer
-        Skill updatedSkill = skillService.updateSkill(id, skillDetails);
-        SkillDto responseData = convertToDto(updatedSkill);
+                Skill updatedSkill = skillService.updateSkill(id, userId, skillDetails);
+                return ResponseEntity.ok(ApiResponse.success("Skill updated successfully", convertToDto(updatedSkill)));
+        }
 
-        return ResponseEntity.ok(ApiResponse.success("Skill updated successfully", responseData));
-    }
-    
-    @GetMapping("/{id}")
-    public ResponseEntity<ApiResponse<SkillDto>> getSkillById(@PathVariable Long id) {
-        // 1. Fetch the entity from the service layer
-        Skill skill = skillService.getSkillById(id);
+        @DeleteMapping("/{id}")
+        public ResponseEntity<ApiResponse<Void>> deleteSkill(@PathVariable Long id) {
+                Long userId = securityContextService.getCurrentUserId();
+                skillService.deleteSkill(id, userId);
+                return ResponseEntity.ok(ApiResponse.success("Skill deleted successfully"));
+        }
 
-        // 2. Convert it to a DTO
-        SkillDto responseData = convertToDto(skill);
-
-        // 3. Return it wrapped in your success envelope
-        return ResponseEntity.ok(ApiResponse.success("Skill retrieved successfully", responseData));
-    }
+        private SkillDto convertToDto(Skill skill) {
+                return SkillDto.builder()
+                                .id(skill.getId())
+                                .displayName(skill.getDisplayName())
+                                .technicalName(skill.getTechnicalName())
+                                .sentenceEn(skill.getSentenceEn())
+                                .sentenceFr(skill.getSentenceFr())
+                                // Clean, safe fallback verification for DB target contexts
+                                .userId(skill.getUser() != null ? skill.getUser().getId() : null)
+                                .build();
+        }
 }

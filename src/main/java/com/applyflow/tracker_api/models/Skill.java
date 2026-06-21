@@ -20,7 +20,7 @@ public class Skill {
     @Column(name = "display_name", nullable = false, length = 100)
     private String displayName;
 
-    @Column(name = "technical_name", nullable = false, length = 100)
+    @Column(name = "name", nullable = false, length = 100)
     private String technicalName;
 
     @Column(name = "sentence_en", nullable = false, columnDefinition = "TEXT")
@@ -28,6 +28,10 @@ public class Skill {
 
     @Column(name = "sentence_fr", nullable = false, columnDefinition = "TEXT")
     private String sentenceFr;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "user_id", nullable = false)
+    private User user; // <-- Bound to single user ownership
 
     @ManyToMany(mappedBy = "skills")
     private Set<Application> applications;
