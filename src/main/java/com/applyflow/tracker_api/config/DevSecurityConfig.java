@@ -7,6 +7,9 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
+import org.springframework.security.oauth2.client.web.DefaultOAuth2AuthorizationRequestResolver;
+import org.springframework.security.oauth2.client.web.OAuth2AuthorizationRequestResolver;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
@@ -24,7 +27,8 @@ public class DevSecurityConfig {
     private final OAuth2SuccessHandler oAuth2SuccessHandler;
 
     @Bean
-    public SecurityFilterChain devSecurityFilterChain(HttpSecurity http) throws Exception {
+    public SecurityFilterChain devSecurityFilterChain(HttpSecurity http,
+            ClientRegistrationRepository clientRegistrationRepository) throws Exception {
         http
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .csrf(csrf -> csrf.disable())
@@ -33,9 +37,12 @@ public class DevSecurityConfig {
                         .anyRequest().authenticated() // Enforces authentication for everything else in dev!
                 )
                 .oauth2Login(oauth2 -> oauth2
+                        // Appends the offline access parameters to get the refresh token in dev
+                        .authorizationEndpoint(auth -> auth
+                                .authorizationRequestResolver(
+                                        authorizationRequestResolver(clientRegistrationRepository)))
                         .userInfoEndpoint(userInfo -> userInfo
                                 .userService(customOAuth2UserService))
-                                
                         .successHandler(oAuth2SuccessHandler));
 
         return http.build();
@@ -52,5 +59,24 @@ public class DevSecurityConfig {
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration); // Dynamic routing across auth & API
         return source;
+    }
+
+    /**
+     * Customizes the initial Google redirection request to ensure offline
+     * parameters
+     * are forced on every dev authentication workflow context.
+     */
+    private OAuth2AuthorizationRequestResolver authorizationRequestResolver(
+            ClientRegistrationRepository clientRegistrationRepository) {
+
+        DefaultOAuth2AuthorizationRequestResolver resolver = new DefaultOAuth2AuthorizationRequestResolver(
+                clientRegistrationRepository, "/oauth2/authorization");
+
+        resolver.setAuthorizationRequestCustomizer(customizer -> customizer
+                .additionalParameters(params -> {
+                    params.put("access_type", "offline"); // Crucial parameter to return refresh_token
+                    params.put("prompt", "consent"); // Forces user to re-consent so token isn't missing
+                }));
+        return resolver;
     }
 }

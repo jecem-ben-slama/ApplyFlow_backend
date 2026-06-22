@@ -7,6 +7,9 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
+import org.springframework.security.oauth2.client.web.DefaultOAuth2AuthorizationRequestResolver;
+import org.springframework.security.oauth2.client.web.OAuth2AuthorizationRequestResolver;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
@@ -24,7 +27,8 @@ public class SecurityConfig {
         private final OAuth2SuccessHandler oAuth2SuccessHandler;
 
         @Bean
-        public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+        public SecurityFilterChain securityFilterChain(HttpSecurity http,
+                        ClientRegistrationRepository clientRegistrationRepository) throws Exception {
                 http
                                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                                 .csrf(csrf -> csrf.disable())
@@ -32,6 +36,11 @@ public class SecurityConfig {
                                                 .requestMatchers("/", "/login/**", "/oauth2/**").permitAll()
                                                 .anyRequest().authenticated())
                                 .oauth2Login(oauth2 -> oauth2
+                                                // Appends authorization customizers for obtaining refresh tokens
+                                                .authorizationEndpoint(auth -> auth
+                                                                .authorizationRequestResolver(
+                                                                                authorizationRequestResolver(
+                                                                                                clientRegistrationRepository)))
                                                 .userInfoEndpoint(userInfo -> userInfo
                                                                 .userService(customOAuth2UserService))
                                                 .successHandler(oAuth2SuccessHandler));
@@ -49,5 +58,26 @@ public class SecurityConfig {
                 UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
                 source.registerCorsConfiguration("/api/**", configuration);
                 return source;
+        }
+
+        /**
+         * Customizes the initial Google redirection request to ensure offline
+         * parameters
+         * are forced on every authentication workflow context.
+         */
+        private OAuth2AuthorizationRequestResolver authorizationRequestResolver(
+                        ClientRegistrationRepository clientRegistrationRepository) {
+
+                DefaultOAuth2AuthorizationRequestResolver resolver = new DefaultOAuth2AuthorizationRequestResolver(
+                                clientRegistrationRepository, "/oauth2/authorization");
+
+                resolver.setAuthorizationRequestCustomizer(customizer -> customizer
+                                .additionalParameters(params -> {
+                                        params.put("access_type", "offline"); // Crucial parameter to return
+                                                                              // refresh_token
+                                        params.put("prompt", "consent"); // Forces user to re-consent so token isn't
+                                                                         // missing
+                                }));
+                return resolver;
         }
 }

@@ -6,6 +6,7 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.client.OAuth2AuthorizedClient;
 import org.springframework.security.oauth2.client.OAuth2AuthorizedClientService;
@@ -21,6 +22,7 @@ import java.time.Instant;
 
 @Component
 @RequiredArgsConstructor
+@Slf4j
 public class OAuth2SuccessHandler implements AuthenticationSuccessHandler {
 
     private final UserRepository userRepository;
@@ -35,7 +37,7 @@ public class OAuth2SuccessHandler implements AuthenticationSuccessHandler {
         String googleSub = oAuth2User.getAttribute("sub");
         String email = oAuth2User.getAttribute("email");
 
-        System.out.println("DEBUG: OAuth2SuccessHandler captured login for email: " + email);
+        log.info("OAuth2SuccessHandler processing authentication routing for: {}", email);
 
         // Fetch the authorized client mapping containing credentials
         OAuth2AuthorizedClient client = authorizedClientService.loadAuthorizedClient(
@@ -48,42 +50,42 @@ public class OAuth2SuccessHandler implements AuthenticationSuccessHandler {
         if (client != null) {
             if (client.getRefreshToken() != null) {
                 refreshToken = client.getRefreshToken().getTokenValue();
+                log.info("Successfully intercepted raw refresh_token parameter stream from client context.");
+            } else {
+                log.warn("Refresh token was missing from Google response payload context.");
             }
+
             Instant expiresAt = client.getAccessToken().getExpiresAt();
             if (expiresAt != null) {
                 tokenExpiry = LocalDateTime.ofInstant(expiresAt, ZoneId.systemDefault());
             }
         } else {
-            System.out.println("⚠️ Warning: AuthorizedClient was null. Tokens could not be extracted.");
+            log.error("CRITICAL: AuthorizedClient context returned null. Token mapping execution failed.");
         }
 
-        // Make the variables final so they can enter the lambda cleanly
-        final String finalRefreshToken = refreshToken;
-        final LocalDateTime finalTokenExpiry = tokenExpiry;
-
-        // Find or create the user record explicitly
+        // Find or build the persistent user identity row matrix
         User user = userRepository.findByGoogleSub(googleSub).orElseGet(() -> {
-            System.out.println("🆕 User not found in database via SuccessHandler. Creating fresh baseline...");
+            log.info("Registering brand new user baseline context into repository schema for: {}", email);
             return User.builder()
                     .googleSub(googleSub)
                     .email(email)
                     .build();
         });
 
-        // Apply tokens safely
-        if (finalRefreshToken != null) {
-            user.setRefreshToken(finalRefreshToken);
+        // Apply updated token credentials safely
+        if (refreshToken != null) {
+            user.setRefreshToken(refreshToken);
         }
-        if (finalTokenExpiry != null) {
-            user.setTokenExpiry(finalTokenExpiry);
+        if (tokenExpiry != null) {
+            user.setTokenExpiry(tokenExpiry);
         }
         user.setUpdatedAt(LocalDateTime.now());
 
-        // Explicitly write to PostgreSQL
+        // Save progress down to persistent store
         userRepository.save(user);
-        System.out.println("💾 Database record permanently committed for: " + user.getEmail());
+        log.info("Successfully committed synchronization states to database engine for sub mapping profile.");
 
-        // Redirect the user to your frontend dashboard application
+        // Redirect back to frontend dashboard server
         response.sendRedirect("http://localhost:4200/");
     }
 }
