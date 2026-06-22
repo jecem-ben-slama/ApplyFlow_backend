@@ -33,7 +33,7 @@ public class SecurityContextService {
         }
 
         System.out.println(
-                "❌ DEBUG: Unexpected Principal Class structure encountered: " + principal.getClass().getName());
+                " DEBUG: Unexpected Principal Class structure encountered: " + principal.getClass().getName());
         throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid authentication principal type.");
     }
 }

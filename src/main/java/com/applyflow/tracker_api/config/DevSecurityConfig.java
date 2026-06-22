@@ -63,8 +63,7 @@ public class DevSecurityConfig {
 
     /**
      * Customizes the initial Google redirection request to ensure offline
-     * parameters
-     * are forced on every dev authentication workflow context.
+     * parameters are forced cleanly without duplicating keys.
      */
     private OAuth2AuthorizationRequestResolver authorizationRequestResolver(
             ClientRegistrationRepository clientRegistrationRepository) {
@@ -74,6 +73,12 @@ public class DevSecurityConfig {
 
         resolver.setAuthorizationRequestCustomizer(customizer -> customizer
                 .additionalParameters(params -> {
+                    // Forcefully remove parameters first to eliminate Google Error 400 parameter
+                    // duplicates
+                    params.remove("access_type");
+                    params.remove("prompt");
+
+                    // Inject single clean parameters safely
                     params.put("access_type", "offline"); // Crucial parameter to return refresh_token
                     params.put("prompt", "consent"); // Forces user to re-consent so token isn't missing
                 }));
