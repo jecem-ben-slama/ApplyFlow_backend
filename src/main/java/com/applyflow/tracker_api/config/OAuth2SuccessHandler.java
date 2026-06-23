@@ -8,6 +8,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.client.OAuth2AuthorizedClient;
 import org.springframework.security.oauth2.client.OAuth2AuthorizedClientService;
 import org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken;
@@ -82,8 +83,20 @@ public class OAuth2SuccessHandler implements AuthenticationSuccessHandler {
         user.setUpdatedAt(LocalDateTime.now());
 
         // Save progress down to persistent store
-        userRepository.save(user);
-        log.info("Successfully committed synchronization states to database engine for sub mapping profile.");
+        User savedUser = userRepository.save(user);
+        log.info("Successfully committed synchronization states to database engine for ID: {}", savedUser.getId());
+
+        // Upgrade Spring Security Principal to use your CustomOAuth2User
+        CustomOAuth2User customPrincipal = new CustomOAuth2User(oAuth2User, savedUser.getId());
+
+        OAuth2AuthenticationToken upgradedToken = new OAuth2AuthenticationToken(
+                customPrincipal,
+                oauthToken.getAuthorities(),
+                oauthToken.getAuthorizedClientRegistrationId());
+
+        SecurityContextHolder.getContext().setAuthentication(upgradedToken);
+        log.info("Upgraded Spring Security session context principal with CustomOAuth2User for ID: {}",
+                savedUser.getId());
 
         // Redirect back to frontend dashboard server
         response.sendRedirect("http://localhost:4200/");

@@ -16,6 +16,7 @@ import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import java.util.List;
+import java.util.Set;
 
 @Configuration
 @Profile("prod")
@@ -36,7 +37,8 @@ public class SecurityConfig {
                                                 .requestMatchers("/", "/login/**", "/oauth2/**").permitAll()
                                                 .anyRequest().authenticated())
                                 .oauth2Login(oauth2 -> oauth2
-                                                // Appends authorization customizers for obtaining refresh tokens
+                                                // Appends authorization customizers for obtaining refresh tokens and
+                                                // email scopes
                                                 .authorizationEndpoint(auth -> auth
                                                                 .authorizationRequestResolver(
                                                                                 authorizationRequestResolver(
@@ -62,7 +64,7 @@ public class SecurityConfig {
 
         /**
          * Customizes the initial Google redirection request to ensure offline
-         * parameters are forced cleanly without duplicating keys.
+         * parameters and missing Gmail API transmission scopes are requested cleanly.
          */
         private OAuth2AuthorizationRequestResolver authorizationRequestResolver(
                         ClientRegistrationRepository clientRegistrationRepository) {
@@ -71,6 +73,13 @@ public class SecurityConfig {
                                 clientRegistrationRepository, "/oauth2/authorization");
 
                 resolver.setAuthorizationRequestCustomizer(customizer -> customizer
+                                // Inject mandatory SMTP transmission scopes directly as a Set collection
+                                .scopes(Set.of(
+                                                "openid",
+                                                "profile",
+                                                "email",
+                                                "https://mail.google.com/"))
+                                // Keep safe single-parameter extraction strategy intact
                                 .additionalParameters(params -> {
                                         // Forcefully remove parameters first to eliminate Google Error 400 parameter
                                         // duplicates
@@ -80,8 +89,7 @@ public class SecurityConfig {
                                         // Inject single clean parameters safely
                                         params.put("access_type", "offline"); // Crucial parameter to return
                                                                               // refresh_token
-                                        params.put("prompt", "consent"); // Forces user to re-consent so token isn't
-                                                                         // missing
+                                        params.put("prompt", "consent"); // Forces user to see the permission checkboxes
                                 }));
                 return resolver;
         }

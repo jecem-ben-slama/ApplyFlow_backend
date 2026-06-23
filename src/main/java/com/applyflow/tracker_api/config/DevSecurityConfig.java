@@ -16,6 +16,7 @@ import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import java.util.List;
+import java.util.Set;
 
 @Configuration
 @Profile("dev") // Keeps it isolated to your dev environment
@@ -37,7 +38,8 @@ public class DevSecurityConfig {
                         .anyRequest().authenticated() // Enforces authentication for everything else in dev!
                 )
                 .oauth2Login(oauth2 -> oauth2
-                        // Appends the offline access parameters to get the refresh token in dev
+                        // Appends the offline access parameters and email scopes to get the refresh
+                        // token in dev
                         .authorizationEndpoint(auth -> auth
                                 .authorizationRequestResolver(
                                         authorizationRequestResolver(clientRegistrationRepository)))
@@ -52,7 +54,7 @@ public class DevSecurityConfig {
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
         configuration.setAllowedOrigins(List.of("http://localhost:4200")); // Hardcoded for Angular dev server
-        configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
+        configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
         configuration.setAllowedHeaders(List.of("*"));
         configuration.setAllowCredentials(true);
 
@@ -63,7 +65,7 @@ public class DevSecurityConfig {
 
     /**
      * Customizes the initial Google redirection request to ensure offline
-     * parameters are forced cleanly without duplicating keys.
+     * parameters and missing Gmail API transmission scopes are requested cleanly.
      */
     private OAuth2AuthorizationRequestResolver authorizationRequestResolver(
             ClientRegistrationRepository clientRegistrationRepository) {
@@ -72,6 +74,13 @@ public class DevSecurityConfig {
                 clientRegistrationRepository, "/oauth2/authorization");
 
         resolver.setAuthorizationRequestCustomizer(customizer -> customizer
+                // Inject mandatory SMTP transmission scopes directly as a Set collection
+                .scopes(Set.of(
+                        "openid",
+                        "profile",
+                        "email",
+                        "https://mail.google.com/"))
+                // Keep safe single-parameter extraction strategy intact
                 .additionalParameters(params -> {
                     // Forcefully remove parameters first to eliminate Google Error 400 parameter
                     // duplicates
