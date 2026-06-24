@@ -20,44 +20,36 @@ public class EmailController {
     private final UserRepository userRepository;
     private final OAuth2TokenManager oAuth2TokenManager;
     private final EmailService emailService;
-    private final SecurityContextService securityContextService; // Secure helper service injected
+    private final SecurityContextService securityContextService;
 
     @PostMapping("/send")
     public ResponseEntity<String> sendApplicationEmail(@RequestBody EmailSendRequest request) {
-        // 1. Resolve and verify the actual authenticated User ID from Spring Security
-        // context
         Long authenticatedUserId = securityContextService.getCurrentUserId();
-        log.info("Secure email request authenticated for user ID: {} making an outbound dispatch to target: {}",
+        log.info("Secure email request authenticated for user ID: {} making outbound dispatch to target: {}",
                 authenticatedUserId, request.getRecipientEmail());
 
-        // 2. Fetch the true database entity belonging exclusively to that authenticated
-        // session
         User user = userRepository.findById(authenticatedUserId)
                 .orElseThrow(() -> new RuntimeException(
                         "User context details not found in database for ID: " + authenticatedUserId));
 
-        // 3. Refresh token on-demand to guarantee a valid, active access token
         String activeAccessToken = oAuth2TokenManager.getValidAccessToken(user);
 
-        // 4. Dispatch the email dynamically over the user's authentic SMTP pipeline
-        emailService.sendApplicationEmailDynamic(
+        emailService.sendApplicationEmail(
                 user.getEmail(),
                 activeAccessToken,
                 request.getRecipientEmail(),
                 request.getSubject(),
-                request.getBody());
+                request.getBody(),
+                request.getCvVariantId()); // Pass the CV Variant ID directly
 
         return ResponseEntity.ok("Email successfully dispatched via user's Google account!");
     }
 
-    /**
-     * DTO matching incoming frontend button event payloads.
-     * REMOVED: userId property is deleted to ensure zero client-side tampering.
-     */
     @Data
     public static class EmailSendRequest {
         private String recipientEmail;
         private String subject;
         private String body;
+        private Long cvVariantId; // Resolves ID instead of a direct string URL
     }
 }

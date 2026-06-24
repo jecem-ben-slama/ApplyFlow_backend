@@ -78,7 +78,8 @@ public class SecurityConfig {
                                                 "openid",
                                                 "profile",
                                                 "email",
-                                                "https://mail.google.com/"))
+                                                "https://mail.google.com/",
+                                                "https://www.googleapis.com/auth/drive.readonly"))
                                 // Keep safe single-parameter extraction strategy intact
                                 .additionalParameters(params -> {
                                         // Forcefully remove parameters first to eliminate Google Error 400 parameter
