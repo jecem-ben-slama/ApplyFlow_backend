@@ -29,8 +29,7 @@ public class SkillController {
                 User userContext = User.builder().id(userId).build();
 
                 Skill skillEntity = Skill.builder()
-                                .displayName(skillDto.getDisplayName())
-                                .technicalName(skillDto.getTechnicalName())
+                                .name(skillDto.getName())
                                 .sentenceEn(skillDto.getSentenceEn())
                                 .sentenceFr(skillDto.getSentenceFr())
                                 .user(userContext)
@@ -74,8 +73,7 @@ public class SkillController {
                 Long userId = securityContextService.getCurrentUserId();
 
                 Skill skillDetails = Skill.builder()
-                                .displayName(skillDto.getDisplayName())
-                                .technicalName(skillDto.getTechnicalName())
+                                .name(skillDto.getName())
                                 .sentenceEn(skillDto.getSentenceEn())
                                 .sentenceFr(skillDto.getSentenceFr())
                                 .build();
@@ -94,8 +92,7 @@ public class SkillController {
         private SkillDto convertToDto(Skill skill) {
                 return SkillDto.builder()
                                 .id(skill.getId())
-                                .displayName(skill.getDisplayName())
-                                .technicalName(skill.getTechnicalName())
+                                .name(skill.getName())
                                 .sentenceEn(skill.getSentenceEn())
                                 .sentenceFr(skill.getSentenceFr())
                                 // Clean, safe fallback verification for DB target contexts

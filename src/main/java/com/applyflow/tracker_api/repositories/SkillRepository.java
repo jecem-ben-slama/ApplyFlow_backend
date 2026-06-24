@@ -12,7 +12,7 @@ import java.util.Optional;
 public interface SkillRepository extends JpaRepository<Skill, Long> {
 
     // Prevent duplicate skills for a specific user during data creation workflows
-    Optional<Skill> findByUserIdAndTechnicalName(Long userId, String technicalName);
+    Optional<Skill> findByUserIdAndName(Long userId, String Name);
 
     // Fetch a paged list of skills belonging strictly to the logged-in user
     Page<Skill> findByUserId(Long userId, Pageable pageable);
@@ -20,6 +20,6 @@ public interface SkillRepository extends JpaRepository<Skill, Long> {
     // Find a specific skill only if it belongs to the logged-in user
     Optional<Skill> findByIdAndUserId(Long id, Long userId);
     
-    Optional<Skill> findByTechnicalName(String technicalName);
+    Optional<Skill> findByName(String Name);
 
 }

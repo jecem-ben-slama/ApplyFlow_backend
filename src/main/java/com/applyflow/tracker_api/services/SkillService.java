@@ -17,15 +17,15 @@ public class SkillService {
 
     @Transactional
     public Skill createSkill(Skill skill) {
-        String cleanTechName = skill.getTechnicalName().toLowerCase().trim();
+        String cleanName = skill.getName().toLowerCase().trim();
 
         // Check uniqueness strictly per user
-        if (skillRepository.findByUserIdAndTechnicalName(skill.getUser().getId(), cleanTechName).isPresent()) {
+        if (skillRepository.findByUserIdAndName(skill.getUser().getId(), cleanName).isPresent()) {
             throw new IllegalArgumentException(
-                    "A skill with technical name '" + cleanTechName + "' already exists for this user.");
+                    "A skill with name '" + cleanName + "' already exists for this user.");
         }
 
-        skill.setTechnicalName(cleanTechName);
+        skill.setName(cleanName);
         return skillRepository.save(skill);
     }
 
@@ -42,16 +42,15 @@ public class SkillService {
     public Skill updateSkill(Long id, Long userId, Skill skillDetails) {
         Skill existingSkill = getSkillByIdAndUser(id, userId);
 
-        existingSkill.setDisplayName(skillDetails.getDisplayName());
         existingSkill.setSentenceEn(skillDetails.getSentenceEn());
         existingSkill.setSentenceFr(skillDetails.getSentenceFr());
 
-        String cleanTechName = skillDetails.getTechnicalName().toLowerCase().trim();
-        if (!existingSkill.getTechnicalName().equals(cleanTechName) &&
-                skillRepository.findByUserIdAndTechnicalName(userId, cleanTechName).isPresent()) {
-            throw new IllegalArgumentException("Another skill already uses the name: " + cleanTechName);
+        String cleanName = skillDetails.getName().toLowerCase().trim();
+        if (!existingSkill.getName().equals(cleanName) &&
+                skillRepository.findByUserIdAndName(userId, cleanName).isPresent()) {
+            throw new IllegalArgumentException("Another skill already uses the name: " + cleanName);
         }
-        existingSkill.setTechnicalName(cleanTechName);
+        existingSkill.setName(cleanName);
 
         return skillRepository.save(existingSkill);
     }

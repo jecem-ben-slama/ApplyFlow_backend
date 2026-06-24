@@ -54,7 +54,7 @@ public class ApplicationService {
         // 3. Construct the customized bullet points block
         StringBuilder skillsBulletPoints = new StringBuilder();
         for (Skill skill : selectedSkills) {
-            skillsBulletPoints.append("• ").append(skill.getDisplayName()).append(" : ");
+            skillsBulletPoints.append("• ").append(skill.getName()).append(" : ");
             if ("fr".equalsIgnoreCase(dto.getLanguage())) {
                 skillsBulletPoints.append(skill.getSentenceFr());
             } else {

@@ -33,7 +33,7 @@ public class Application {
 
     @Column(length = 50)
     @Builder.Default
-    private String status = "Sent";
+    private String status = "Compiled";
 
     @Column(name = "generated_subject", nullable = false, columnDefinition = "TEXT")
     private String generatedSubject;

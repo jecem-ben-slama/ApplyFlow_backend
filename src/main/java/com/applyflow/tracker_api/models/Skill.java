@@ -17,11 +17,8 @@ public class Skill {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "display_name", nullable = false, length = 100)
-    private String displayName;
-
     @Column(name = "name", nullable = false, length = 100)
-    private String technicalName;
+    private String name;
 
     @Column(name = "sentence_en", nullable = false, columnDefinition = "TEXT")
     private String sentenceEn;
@@ -31,7 +28,7 @@ public class Skill {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", nullable = false)
-    private User user; // <-- Bound to single user ownership
+    private User user; 
 
     @ManyToMany(mappedBy = "skills")
     private Set<Application> applications;

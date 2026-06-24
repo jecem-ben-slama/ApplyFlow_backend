@@ -9,9 +9,8 @@ import lombok.*;
 @Builder
 public class SkillDto {
     private Long id;
-    private String displayName;
-    private String technicalName;
+    private String name;
     private String sentenceEn;
     private String sentenceFr;
-    private Long userId; // <-- Linked to single user ownership
+    private Long userId; 
 }
