@@ -23,8 +23,6 @@ public class Template {
     @Column(nullable = false, length = 10)
     private String language;
 
-    @Column(nullable = false)
-    private Integer tier;
 
     @Column(name = "subject_template", nullable = false, columnDefinition = "TEXT")
     private String subjectTemplate;

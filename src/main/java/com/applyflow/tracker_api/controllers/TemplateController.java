@@ -30,7 +30,6 @@ public class TemplateController {
                 Template entity = Template.builder()
                                 .name(dto.getName())
                                 .language(dto.getLanguage())
-                                .tier(dto.getTier())
                                 .subjectTemplate(dto.getSubjectTemplate())
                                 .bodyTemplate(dto.getBodyTemplate())
                                 .user(User.builder().id(userId).build())
@@ -87,7 +86,6 @@ public class TemplateController {
                 Template details = Template.builder()
                                 .name(dto.getName())
                                 .language(dto.getLanguage())
-                                .tier(dto.getTier())
                                 .subjectTemplate(dto.getSubjectTemplate())
                                 .bodyTemplate(dto.getBodyTemplate())
                                 .build();
@@ -111,7 +109,6 @@ public class TemplateController {
                                 .id(template.getId())
                                 .name(template.getName())
                                 .language(template.getLanguage())
-                                .tier(template.getTier())
                                 .subjectTemplate(template.getSubjectTemplate())
                                 .bodyTemplate(template.getBodyTemplate())
                                 .createdAt(template.getCreatedAt())

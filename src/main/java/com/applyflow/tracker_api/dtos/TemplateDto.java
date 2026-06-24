@@ -12,7 +12,6 @@ public class TemplateDto {
     private Long id;
     private String name;
     private String language;
-    private Integer tier;
     private String subjectTemplate;
     private String bodyTemplate;
     private LocalDateTime createdAt;

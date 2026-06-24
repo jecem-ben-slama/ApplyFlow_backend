@@ -38,7 +38,6 @@ public class TemplateService {
 
         existingTemplate.setName(templateDetails.getName());
         existingTemplate.setLanguage(templateDetails.getLanguage());
-        existingTemplate.setTier(templateDetails.getTier());
         existingTemplate.setSubjectTemplate(templateDetails.getSubjectTemplate());
         existingTemplate.setBodyTemplate(templateDetails.getBodyTemplate());
         existingTemplate.setUpdatedAt(LocalDateTime.now());
