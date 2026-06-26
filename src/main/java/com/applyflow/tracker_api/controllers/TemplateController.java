@@ -44,6 +44,7 @@ public class TemplateController {
         @GetMapping
         public ResponseEntity<ApiResponse<Page<TemplateDto>>> getAllTemplates(
                         @RequestParam(required = false) String language,
+                        @RequestParam(required = false) String search, // ← new
                         @RequestParam(defaultValue = "0") int page,
                         @RequestParam(defaultValue = "10") int size,
                         @RequestParam(defaultValue = "id") String sortBy,
@@ -51,13 +52,25 @@ public class TemplateController {
 
                 Long userId = securityContextService.getCurrentUserId();
 
-                Sort sort = direction.equalsIgnoreCase("desc") ? Sort.by(sortBy).descending()
+                Sort sort = direction.equalsIgnoreCase("desc")
+                                ? Sort.by(sortBy).descending()
                                 : Sort.by(sortBy).ascending();
                 Pageable pageable = PageRequest.of(page, size, sort);
 
-                Page<Template> templates = (language != null)
-                                ? templateService.getTemplatesForUserByLanguage(userId, language, pageable)
-                                : templateService.getTemplatesForUser(userId, pageable);
+                boolean hasSearch = search != null && !search.isBlank();
+                boolean hasLanguage = language != null;
+
+                Page<Template> templates;
+                if (hasSearch && hasLanguage) {
+                        templates = templateService.searchTemplatesForUserByLanguage(userId, language, search,
+                                        pageable);
+                } else if (hasSearch) {
+                        templates = templateService.searchTemplatesForUser(userId, search, pageable);
+                } else if (hasLanguage) {
+                        templates = templateService.getTemplatesForUserByLanguage(userId, language, pageable);
+                } else {
+                        templates = templateService.getTemplatesForUser(userId, pageable);
+                }
 
                 Page<TemplateDto> dtos = templates.map(this::convertToDto);
                 return ResponseEntity.ok(ApiResponse.success("Templates retrieved successfully", dtos));

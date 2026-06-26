@@ -27,6 +27,15 @@ public class TemplateService {
         return templateRepository.findByUserIdAndLanguage(userId, language, pageable);
     }
 
+    public Page<Template> searchTemplatesForUser(Long userId, String term, Pageable pageable) {
+        return templateRepository.searchByUserIdAndTerm(userId, term, pageable);
+    }
+
+    public Page<Template> searchTemplatesForUserByLanguage(
+            Long userId, String language, String term, Pageable pageable) {
+        return templateRepository.searchByUserIdAndLanguageAndTerm(userId, language, term, pageable);
+    }
+
     public Template getTemplateByIdAndUser(Long id, Long userId) {
         return templateRepository.findByIdAndUserId(id, userId)
                 .orElseThrow(() -> new RuntimeException("Template not found or access denied."));
