@@ -85,6 +85,7 @@ public class ApplicationService {
                 .language(dto.getLanguage())
                 .generatedSubject(compiledSubject)
                 .generatedBody(compiledBody)
+                .status("Compiled") 
                 .template(template)
                 .cvVariant(cvVariant)
                 .user(user)

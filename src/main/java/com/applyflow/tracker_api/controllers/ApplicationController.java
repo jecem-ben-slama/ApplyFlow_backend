@@ -97,6 +97,7 @@ public class ApplicationController {
                 .notes(app.getNotes())
                 .templateId(app.getTemplate() != null ? app.getTemplate().getId() : null)
                 .cvVariantId(app.getCvVariant() != null ? app.getCvVariant().getId() : null)
+                .status("app.getStatus()")
                 .userId(app.getUser() != null ? app.getUser().getId() : null)
                 .skillIds(app.getSkills().stream().map(Skill::getId).collect(Collectors.toSet()))
                 .build();
