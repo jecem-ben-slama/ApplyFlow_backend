@@ -48,7 +48,8 @@ public class SkillController {
                         @RequestParam(defaultValue = "10") int size,
                         @RequestParam(defaultValue = "id") String sortBy,
                         @RequestParam(defaultValue = "asc") String direction,
-                        @RequestParam(required = false) Long categoryId) {
+                        @RequestParam(required = false) Long categoryId,
+                        @RequestParam(required = false) String search) {
 
                 Long userId = securityContextService.getCurrentUserId();
 
@@ -58,7 +59,7 @@ public class SkillController {
                 Pageable pageable = PageRequest.of(page, size, sort);
 
                 Page<SkillDto> responseData = skillService
-                                .getSkillsForUser(userId, categoryId, pageable)
+                                .getSkillsForUser(userId, categoryId, search, pageable)
                                 .map(this::convertToDto);
 
                 return ResponseEntity.ok(ApiResponse.success("Skills retrieved successfully", responseData));

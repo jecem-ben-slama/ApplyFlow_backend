@@ -40,11 +40,19 @@ public class SkillService {
         return skillRepository.save(skill);
     }
 
-    public Page<Skill> getSkillsForUser(Long userId, Long categoryId, Pageable pageable) {
-        if (categoryId != null) {
+    public Page<Skill> getSkillsForUser(Long userId, Long categoryId, String search, Pageable pageable) {
+        boolean hasSearch = search != null && !search.isBlank();
+        boolean hasCategory = categoryId != null;
+
+        if (hasSearch && hasCategory) {
+            return skillRepository.searchByUserIdAndCategoryIdAndTerm(userId, categoryId, search, pageable);
+        } else if (hasSearch) {
+            return skillRepository.searchByUserIdAndTerm(userId, search, pageable);
+        } else if (hasCategory) {
             return skillRepository.findByUserIdAndCategoryId(userId, categoryId, pageable);
+        } else {
+            return skillRepository.findByUserId(userId, pageable);
         }
-        return skillRepository.findByUserId(userId, pageable);
     }
 
     public Skill getSkillByIdAndUser(Long id, Long userId) {
@@ -75,7 +83,6 @@ public class SkillService {
                             HttpStatus.NOT_FOUND, "Category not found."));
             existing.setCategory(category);
         } else {
-            // Passing null explicitly clears the category assignment
             existing.setCategory(null);
         }
 
