@@ -27,8 +27,12 @@ public class Skill {
     private String sentenceFr;
 
     @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "category_id", nullable = true)
+    private Category category;
+
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", nullable = false)
-    private User user; 
+    private User user;
 
     @ManyToMany(mappedBy = "skills")
     private Set<Application> applications;

@@ -40,7 +40,6 @@ public class User {
     @Column(name = "token_expiry")
     private LocalDateTime tokenExpiry;
 
-    // --- Bi-directional relationship tracking with secure cascade drops ---
     @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
     @Builder.Default
     private List<Application> applications = new ArrayList<>();
@@ -56,6 +55,16 @@ public class User {
     @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
     @Builder.Default
     private List<Template> templates = new ArrayList<>();
+
+    /**
+     * Categories are user-owned. Deleting the user cascades and removes all their
+     * categories.
+     * Deletion of a single category is blocked at the service layer if skills are
+     * still linked.
+     */
+    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
+    @Builder.Default
+    private List<Category> categories = new ArrayList<>();
 
     @Column(name = "created_at")
     @Builder.Default

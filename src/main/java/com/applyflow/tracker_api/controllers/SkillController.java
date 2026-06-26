@@ -13,11 +13,13 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/skills")
 @RequiredArgsConstructor
+@PreAuthorize("isAuthenticated()")
 public class SkillController {
 
         private final SkillService skillService;
@@ -26,18 +28,17 @@ public class SkillController {
         @PostMapping
         public ResponseEntity<ApiResponse<SkillDto>> createSkill(@RequestBody SkillDto skillDto) {
                 Long userId = securityContextService.getCurrentUserId();
-                User userContext = User.builder().id(userId).build();
 
                 Skill skillEntity = Skill.builder()
                                 .name(skillDto.getName())
                                 .sentenceEn(skillDto.getSentenceEn())
                                 .sentenceFr(skillDto.getSentenceFr())
-                                .user(userContext)
+                                .user(User.builder().id(userId).build())
                                 .build();
 
-                Skill savedSkill = skillService.createSkill(skillEntity);
+                Skill saved = skillService.createSkill(skillEntity, skillDto.getCategoryId(), userId);
                 return new ResponseEntity<>(
-                                ApiResponse.success("Skill created successfully", convertToDto(savedSkill)),
+                                ApiResponse.success("Skill created successfully", convertToDto(saved)),
                                 HttpStatus.CREATED);
         }
 
@@ -46,15 +47,18 @@ public class SkillController {
                         @RequestParam(defaultValue = "0") int page,
                         @RequestParam(defaultValue = "10") int size,
                         @RequestParam(defaultValue = "id") String sortBy,
-                        @RequestParam(defaultValue = "asc") String direction) {
+                        @RequestParam(defaultValue = "asc") String direction,
+                        @RequestParam(required = false) Long categoryId) {
 
                 Long userId = securityContextService.getCurrentUserId();
 
-                Sort sort = direction.equalsIgnoreCase("desc") ? Sort.by(sortBy).descending()
+                Sort sort = direction.equalsIgnoreCase("desc")
+                                ? Sort.by(sortBy).descending()
                                 : Sort.by(sortBy).ascending();
                 Pageable pageable = PageRequest.of(page, size, sort);
 
-                Page<SkillDto> responseData = skillService.getSkillsForUser(userId, pageable)
+                Page<SkillDto> responseData = skillService
+                                .getSkillsForUser(userId, categoryId, pageable)
                                 .map(this::convertToDto);
 
                 return ResponseEntity.ok(ApiResponse.success("Skills retrieved successfully", responseData));
@@ -68,8 +72,10 @@ public class SkillController {
         }
 
         @PutMapping("/{id}")
-        public ResponseEntity<ApiResponse<SkillDto>> updateSkill(@PathVariable Long id,
+        public ResponseEntity<ApiResponse<SkillDto>> updateSkill(
+                        @PathVariable Long id,
                         @RequestBody SkillDto skillDto) {
+
                 Long userId = securityContextService.getCurrentUserId();
 
                 Skill skillDetails = Skill.builder()
@@ -78,8 +84,8 @@ public class SkillController {
                                 .sentenceFr(skillDto.getSentenceFr())
                                 .build();
 
-                Skill updatedSkill = skillService.updateSkill(id, userId, skillDetails);
-                return ResponseEntity.ok(ApiResponse.success("Skill updated successfully", convertToDto(updatedSkill)));
+                Skill updated = skillService.updateSkill(id, userId, skillDetails, skillDto.getCategoryId());
+                return ResponseEntity.ok(ApiResponse.success("Skill updated successfully", convertToDto(updated)));
         }
 
         @DeleteMapping("/{id}")
@@ -95,8 +101,9 @@ public class SkillController {
                                 .name(skill.getName())
                                 .sentenceEn(skill.getSentenceEn())
                                 .sentenceFr(skill.getSentenceFr())
-                                // Clean, safe fallback verification for DB target contexts
                                 .userId(skill.getUser() != null ? skill.getUser().getId() : null)
+                                .categoryId(skill.getCategory() != null ? skill.getCategory().getId() : null)
+                                .categoryName(skill.getCategory() != null ? skill.getCategory().getName() : null)
                                 .build();
         }
 }
