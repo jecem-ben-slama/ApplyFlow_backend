@@ -18,12 +18,8 @@ public class CvVariantService {
         return cvVariantRepository.save(cvVariant);
     }
 
-    public Page<CvVariant> getCvVariantsForUser(Long userId, Pageable pageable) {
-        return cvVariantRepository.findByUserId(userId, pageable);
-    }
-
-    public Page<CvVariant> getCvVariantsForUserByLanguage(Long userId, String language, Pageable pageable) {
-        return cvVariantRepository.findByUserIdAndLanguage(userId, language, pageable);
+    public Page<CvVariant> getCvVariantsForUser(Long userId, String language, String search, Pageable pageable) {
+        return cvVariantRepository.findByUserIdWithFilters(userId, language, search, pageable);
     }
 
     public CvVariant getCvVariantByIdAndUser(Long id, Long userId) {

@@ -45,6 +45,7 @@ public class CvVariantController {
         @Transactional(readOnly = true)
         public ResponseEntity<ApiResponse<Page<CvVariantDto>>> getAllCvVariants(
                         @RequestParam(required = false) String language,
+                        @RequestParam(required = false) String search,
                         @RequestParam(defaultValue = "0") int page,
                         @RequestParam(defaultValue = "10") int size,
                         @RequestParam(defaultValue = "id") String sortBy,
@@ -56,14 +57,11 @@ public class CvVariantController {
                                 : Sort.by(sortBy).ascending();
                 Pageable pageable = PageRequest.of(page, size, sort);
 
-                Page<CvVariant> cvPage = (language != null)
-                                ? cvVariantService.getCvVariantsForUserByLanguage(userId, language, pageable)
-                                : cvVariantService.getCvVariantsForUser(userId, pageable);
+                Page<CvVariant> cvPage = cvVariantService.getCvVariantsForUser(userId, language, search, pageable);
 
                 Page<CvVariantDto> dtos = cvPage.map(this::convertToDto);
                 return ResponseEntity.ok(ApiResponse.success("CV Variants retrieved successfully", dtos));
         }
-
         @GetMapping("/{id}")
         @Transactional(readOnly = true)
         public ResponseEntity<ApiResponse<CvVariantDto>> getCvVariantById(@PathVariable Long id) {
