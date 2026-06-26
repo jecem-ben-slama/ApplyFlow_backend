@@ -13,6 +13,8 @@ import org.springframework.security.oauth2.core.oidc.user.OidcUser;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
+
 @Service
 @RequiredArgsConstructor
 public class CustomOAuth2UserService extends DefaultOAuth2UserService {
@@ -27,21 +29,39 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
         return processUserContext(oAuth2User);
     }
 
-    // 2. Add This: Handles Google OpenID Connect (OIDC) Streams
+    // 2. Handles Google OpenID Connect (OIDC) Streams
     public OidcUser loadOidcUser(OidcUserRequest userRequest) throws OAuth2AuthenticationException {
         OAuth2User oAuth2User = oidcUserService.loadUser(userRequest);
         return (OidcUser) processUserContext(oAuth2User);
     }
 
-    // Common normalization logic
+    // Common normalization and profile-sync logic
     private OAuth2User processUserContext(OAuth2User oAuth2User) {
         String googleSub = oAuth2User.getAttribute("sub");
         String email = oAuth2User.getAttribute("email");
+        String firstName = oAuth2User.getAttribute("given_name");
+        String lastName = oAuth2User.getAttribute("family_name");
+        String pictureUrl = oAuth2User.getAttribute("picture");
 
-        User user = userRepository.findByGoogleSub(googleSub).orElseGet(() -> userRepository.save(User.builder()
-                .googleSub(googleSub)
-                .email(email)
-                .build()));
+        // Fetch existing user or create a new builder instance
+        User user = userRepository.findByGoogleSub(googleSub)
+                .map(existingUser -> {
+                    // Update existing user's profile details on login
+                    existingUser.setFirstName(firstName);
+                    existingUser.setLastName(lastName);
+                    existingUser.setPictureUrl(pictureUrl);
+                    existingUser.setUpdatedAt(LocalDateTime.now());
+                    return userRepository.save(existingUser);
+                })
+                .orElseGet(() -> userRepository.save(User.builder()
+                        .googleSub(googleSub)
+                        .email(email)
+                        .firstName(firstName)
+                        .lastName(lastName)
+                        .pictureUrl(pictureUrl)
+                        .createdAt(LocalDateTime.now())
+                        .updatedAt(LocalDateTime.now())
+                        .build()));
 
         return new CustomOAuth2User(oAuth2User, user.getId());
     }

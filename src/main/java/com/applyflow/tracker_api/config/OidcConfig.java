@@ -9,6 +9,8 @@ import org.springframework.security.oauth2.client.oidc.userinfo.OidcUserService;
 import org.springframework.security.oauth2.core.OAuth2AuthenticationException;
 import org.springframework.security.oauth2.core.oidc.user.OidcUser;
 
+import java.time.LocalDateTime;
+
 @Configuration
 public class OidcConfig {
 
@@ -22,16 +24,31 @@ public class OidcConfig {
 
                 String googleSub = oidcUser.getAttribute("sub");
                 String email = oidcUser.getAttribute("email");
+                String firstName = oidcUser.getAttribute("given_name");
+                String lastName = oidcUser.getAttribute("family_name");
+                String pictureUrl = oidcUser.getAttribute("picture");
 
-                // 2. Look up or register the user in the PostgreSQL database
-                User user = userRepository.findByGoogleSub(googleSub).orElseGet(() -> userRepository.save(User.builder()
-                        .googleSub(googleSub)
-                        .email(email)
-                        .build()));
+                // 2. Look up or register the user in the PostgreSQL database with profile
+                // details
+                User user = userRepository.findByGoogleSub(googleSub)
+                        .map(existingUser -> {
+                            existingUser.setFirstName(firstName);
+                            existingUser.setLastName(lastName);
+                            existingUser.setPictureUrl(pictureUrl);
+                            existingUser.setUpdatedAt(LocalDateTime.now());
+                            return userRepository.save(existingUser);
+                        })
+                        .orElseGet(() -> userRepository.save(User.builder()
+                                .googleSub(googleSub)
+                                .email(email)
+                                .firstName(firstName)
+                                .lastName(lastName)
+                                .pictureUrl(pictureUrl)
+                                .createdAt(LocalDateTime.now())
+                                .updatedAt(LocalDateTime.now())
+                                .build()));
 
                 // 3. Return your custom wrapper class containing the DB user ID!
-                // NOTE: Ensure your CustomOAuth2User class implements 'OidcUser' or is castable
-                // to it.
                 return new CustomOidcUserWrapper(oidcUser, user.getId());
             }
         };

@@ -38,6 +38,11 @@ public class OAuth2SuccessHandler implements AuthenticationSuccessHandler {
         String googleSub = oAuth2User.getAttribute("sub");
         String email = oAuth2User.getAttribute("email");
 
+        // Extract profile details here as well
+        String firstName = oAuth2User.getAttribute("given_name");
+        String lastName = oAuth2User.getAttribute("family_name");
+        String pictureUrl = oAuth2User.getAttribute("picture");
+
         log.info("OAuth2SuccessHandler processing authentication routing for: {}", email);
 
         // Fetch the authorized client mapping containing credentials
@@ -73,13 +78,18 @@ public class OAuth2SuccessHandler implements AuthenticationSuccessHandler {
                     .build();
         });
 
-        // Apply updated token credentials safely
+        // Apply updated token credentials and profile details safely
         if (refreshToken != null) {
             user.setRefreshToken(refreshToken);
         }
         if (tokenExpiry != null) {
             user.setTokenExpiry(tokenExpiry);
         }
+
+        // Update profile details
+        user.setFirstName(firstName);
+        user.setLastName(lastName);
+        user.setPictureUrl(pictureUrl);
         user.setUpdatedAt(LocalDateTime.now());
 
         // Save progress down to persistent store
