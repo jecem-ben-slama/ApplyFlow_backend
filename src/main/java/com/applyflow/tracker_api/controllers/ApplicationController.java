@@ -17,6 +17,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.stream.Collectors;
+import java.util.Collections;
+import java.util.Objects;
 
 @RestController
 @RequestMapping("/api/applications")
@@ -44,15 +46,19 @@ public class ApplicationController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size,
             @RequestParam(defaultValue = "dateApplied") String sortBy,
-            @RequestParam(defaultValue = "desc") String direction) {
+            @RequestParam(defaultValue = "desc") String direction,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String keyword) {
 
         Long userId = securityContextService.getCurrentUserId();
 
-        Sort sort = direction.equalsIgnoreCase("desc") ? Sort.by(sortBy).descending() : Sort.by(sortBy).ascending();
+        Sort sort = direction.equalsIgnoreCase("desc")
+                ? Sort.by(sortBy).descending()
+                : Sort.by(sortBy).ascending();
         Pageable pageable = PageRequest.of(page, size, sort);
 
         Page<ApplicationResponseDto> responseData = applicationService
-                .getAllApplicationsForUser(userId, pageable)
+                .getAllApplicationsForUser(userId, status, keyword, pageable)
                 .map(this::convertToDto);
 
         return ResponseEntity.ok(ApiResponse.success("User tracking history retrieved successfully", responseData));
@@ -97,9 +103,11 @@ public class ApplicationController {
                 .notes(app.getNotes())
                 .templateId(app.getTemplate() != null ? app.getTemplate().getId() : null)
                 .cvVariantId(app.getCvVariant() != null ? app.getCvVariant().getId() : null)
-                .status("app.getStatus()")
+                .status(app.getStatus())
                 .userId(app.getUser() != null ? app.getUser().getId() : null)
-                .skillIds(app.getSkills().stream().map(Skill::getId).collect(Collectors.toSet()))
+                .skillIds(app.getSkills() != null
+                    ? app.getSkills().stream().filter(Objects::nonNull).map(Skill::getId).collect(Collectors.toSet())
+                    : Collections.emptySet())
                 .build();
     }
 }

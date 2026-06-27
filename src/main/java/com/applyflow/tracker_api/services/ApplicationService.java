@@ -24,8 +24,6 @@ public class ApplicationService {
 
     @Transactional
     public Application createAndCompileApplication(ApplicationCreateDto dto) {
-        // 1. Validate and fetch all required dependencies scoped strictly to the
-        // current user
         User user = userRepository.findById(dto.getUserId())
                 .orElseThrow(() -> new RuntimeException("User not found with id: " + dto.getUserId()));
 
@@ -37,7 +35,6 @@ public class ApplicationService {
                 .orElseThrow(() -> new RuntimeException(
                         "CV Variant not found or access denied for id: " + dto.getCvVariantId()));
 
-        // Ensure skills fetched belong to this user
         Set<Skill> selectedSkills = new HashSet<>();
         for (Long skillId : dto.getSkillIds()) {
             Skill skill = skillRepository.findByIdAndUserId(skillId, dto.getUserId())
@@ -45,13 +42,11 @@ public class ApplicationService {
             selectedSkills.add(skill);
         }
 
-        // 2. Stitch the Subject Line Template
         String compiledSubject = template.getSubjectTemplate()
                 .replace("{{position}}", dto.getJobTitle())
                 .replace("{{role}}", dto.getJobTitle())
                 .replace("{{company}}", dto.getCompanyName());
 
-        // 3. Construct the customized bullet points block
         StringBuilder skillsBulletPoints = new StringBuilder();
         for (Skill skill : selectedSkills) {
             skillsBulletPoints.append("• ").append(skill.getName()).append(" : ");
@@ -63,7 +58,6 @@ public class ApplicationService {
             skillsBulletPoints.append("\n");
         }
 
-        // 4. Stitch the Core Email Body
         String skillsContent = skillsBulletPoints.toString().trim();
         String bodyTemplate = template.getBodyTemplate();
 
@@ -77,7 +71,6 @@ public class ApplicationService {
                 .replace("{{company}}", dto.getCompanyName())
                 .replace("{{skills_block}}", skillsContent);
 
-        // 5. Build and save the application
         Application application = Application.builder()
                 .companyName(dto.getCompanyName())
                 .jobTitle(dto.getJobTitle())
@@ -85,7 +78,7 @@ public class ApplicationService {
                 .language(dto.getLanguage())
                 .generatedSubject(compiledSubject)
                 .generatedBody(compiledBody)
-                .status("Compiled") 
+                .status("Compiled")
                 .template(template)
                 .cvVariant(cvVariant)
                 .user(user)
@@ -96,8 +89,21 @@ public class ApplicationService {
         return applicationRepository.save(application);
     }
 
-    public Page<Application> getAllApplicationsForUser(Long userId, Pageable pageable) {
-        return applicationRepository.findByUserId(userId, pageable);
+    public Page<Application> getAllApplicationsForUser(
+            Long userId, String status, String keyword, Pageable pageable) {
+
+        boolean hasStatus = status != null && !status.isBlank();
+        boolean hasKeyword = keyword != null && !keyword.isBlank();
+
+        if (hasStatus && hasKeyword) {
+            return applicationRepository.searchByKeywordAndStatus(userId, keyword, status, pageable);
+        } else if (hasStatus) {
+            return applicationRepository.findByUserIdAndStatusIgnoreCase(userId, status, pageable);
+        } else if (hasKeyword) {
+            return applicationRepository.searchByKeyword(userId, keyword, pageable);
+        } else {
+            return applicationRepository.findByUserId(userId, pageable);
+        }
     }
 
     public Application getApplicationByIdAndUser(Long id, Long userId) {
