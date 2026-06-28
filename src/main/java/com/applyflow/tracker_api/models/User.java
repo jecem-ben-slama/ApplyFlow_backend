@@ -6,6 +6,8 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
+import com.applyflow.tracker_api.config.EncryptedStringConverter;
+
 @Entity
 @Table(name = "users")
 @Getter
@@ -33,7 +35,8 @@ public class User {
 
     @Column(name = "picture_url", columnDefinition = "TEXT")
     private String pictureUrl;
-
+    
+    @Convert(converter = EncryptedStringConverter.class)
     @Column(name = "refresh_token", columnDefinition = "TEXT")
     private String refreshToken;
 
