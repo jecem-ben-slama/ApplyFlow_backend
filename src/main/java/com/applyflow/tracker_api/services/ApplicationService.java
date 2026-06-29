@@ -31,9 +31,13 @@ public class ApplicationService {
                 .orElseThrow(() -> new RuntimeException(
                         "Template not found or access denied for id: " + dto.getTemplateId()));
 
-        CvVariant cvVariant = cvVariantRepository.findByIdAndUserId(dto.getCvVariantId(), dto.getUserId())
-                .orElseThrow(() -> new RuntimeException(
-                        "CV Variant not found or access denied for id: " + dto.getCvVariantId()));
+        // ApplicationService.java — replace the cvVariant lookup
+        CvVariant cvVariant = null;
+        if (dto.getCvVariantId() != null) {
+            cvVariant = cvVariantRepository.findByIdAndUserId(dto.getCvVariantId(), dto.getUserId())
+                    .orElseThrow(() -> new RuntimeException(
+                            "CV Variant not found or access denied for id: " + dto.getCvVariantId()));
+        }
 
         Set<Skill> selectedSkills = new HashSet<>();
         for (Long skillId : dto.getSkillIds()) {
@@ -78,13 +82,14 @@ public class ApplicationService {
                 .language(dto.getLanguage())
                 .generatedSubject(compiledSubject)
                 .generatedBody(compiledBody)
-                .status("Compiled")
+                .status("COMPILED")
                 .template(template)
                 .cvVariant(cvVariant)
                 .user(user)
                 .skills(selectedSkills)
                 .notes(dto.getNotes())
                 .build();
+        System.out.println("Status after save: " + application.getStatus());
 
         return applicationRepository.save(application);
     }

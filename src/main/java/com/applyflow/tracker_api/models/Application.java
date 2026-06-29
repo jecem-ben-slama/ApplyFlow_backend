@@ -32,8 +32,7 @@ public class Application {
     private String language;
 
     @Column(length = 50)
-    @Builder.Default
-    private String status = "Compiled";
+    private String status;
 
     @Column(name = "generated_subject", nullable = false, columnDefinition = "TEXT")
     private String generatedSubject;
