@@ -7,6 +7,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.client.OAuth2AuthorizedClient;
@@ -28,6 +29,9 @@ public class OAuth2SuccessHandler implements AuthenticationSuccessHandler {
 
     private final UserRepository userRepository;
     private final OAuth2AuthorizedClientService authorizedClientService;
+
+    @Value("${app.frontend-url}")
+    private String frontendUrl;
 
     @Override
     public void onAuthenticationSuccess(HttpServletRequest request, HttpServletResponse response,
@@ -108,7 +112,8 @@ public class OAuth2SuccessHandler implements AuthenticationSuccessHandler {
         log.info("Upgraded Spring Security session context principal with CustomOAuth2User for ID: {}",
                 savedUser.getId());
 
-        // Redirect back to frontend dashboard server
-        response.sendRedirect("http://localhost:4200/");
+        // Redirect back to frontend dashboard server (URL is environment-specific,
+        // injected via config)
+        response.sendRedirect(frontendUrl);
     }
 }

@@ -2,6 +2,7 @@ package com.applyflow.tracker_api.config;
 
 import com.applyflow.tracker_api.services.CustomOAuth2UserService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
@@ -26,6 +27,9 @@ public class SecurityConfig {
 
         private final CustomOAuth2UserService customOAuth2UserService;
         private final OAuth2SuccessHandler oAuth2SuccessHandler;
+
+        @Value("${app.cors.allowed-origins}")
+        private List<String> allowedOrigins;
 
         @Bean
         public SecurityFilterChain securityFilterChain(HttpSecurity http,
@@ -53,7 +57,7 @@ public class SecurityConfig {
         @Bean
         public CorsConfigurationSource corsConfigurationSource() {
                 CorsConfiguration configuration = new CorsConfiguration();
-                configuration.setAllowedOrigins(List.of("https://your-prod-domain.com"));
+                configuration.setAllowedOrigins(allowedOrigins);
                 configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
                 configuration.setAllowedHeaders(List.of("*"));
                 configuration.setAllowCredentials(true);
