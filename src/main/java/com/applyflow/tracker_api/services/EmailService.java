@@ -4,18 +4,24 @@ import com.applyflow.tracker_api.models.CvVariant;
 import com.applyflow.tracker_api.repositories.CvVariantRepository;
 import com.applyflow.tracker_api.services.storage.CvStorageFactory;
 import com.applyflow.tracker_api.services.storage.CvStorageService;
-import jakarta.mail.Authenticator;
-import jakarta.mail.PasswordAuthentication;
 import jakarta.mail.Session;
-import jakarta.mail.Transport;
 import jakarta.mail.internet.InternetAddress;
 import jakarta.mail.internet.MimeMessage;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.io.ByteArrayResource;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestTemplate;
 
+import java.io.ByteArrayOutputStream;
+import java.util.Base64;
+import java.util.Map;
 import java.util.Properties;
 
 @Service
@@ -25,25 +31,16 @@ public class EmailService {
 
     private final CvStorageFactory storageFactory;
     private final CvVariantRepository cvVariantRepository;
+    private final RestTemplate restTemplate = new RestTemplate();
+
+    private static final String GMAIL_SEND_URL = "https://gmail.googleapis.com/gmail/v1/users/me/messages/send";
 
     public void sendApplicationEmail(String userEmail, String accessToken, String recipientEmail, String subject,
             String body, Long cvVariantId) {
 
-        Properties props = new Properties();
-        props.put("mail.smtp.host", "smtp.gmail.com");
-        props.put("mail.smtp.port", "587");
-        props.put("mail.smtp.auth", "true");
-        props.put("mail.smtp.starttls.enable", "true");
-        props.put("mail.smtp.auth.mechanisms", "XOAUTH2");
-
-        Session session = Session.getInstance(props, new Authenticator() {
-            @Override
-            protected PasswordAuthentication getPasswordAuthentication() {
-                return new PasswordAuthentication(userEmail, accessToken);
-            }
-        });
-
         try {
+            // Build the MIME message exactly as before — no SMTP session needed anymore
+            Session session = Session.getDefaultInstance(new Properties());
             MimeMessage mimeMessage = new MimeMessage(session);
             MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, true, "UTF-8");
 
@@ -65,8 +62,6 @@ public class EmailService {
 
                 if (cvUrl != null && !cvUrl.isBlank()) {
                     CvStorageService storageService = storageFactory.getServiceForUrl(cvUrl);
-
-                    // Simple, decoupled, strategy-based download call
                     byte[] fileBytes = storageService.downloadFile(cvUrl);
 
                     String filename = (originalDbName != null && !originalDbName.isBlank())
@@ -78,13 +73,27 @@ public class EmailService {
                 }
             }
 
-            Transport.send(mimeMessage);
-            log.info("Email successfully dispatched from user account: {} to recipient: {}", userEmail, recipientEmail);
+            // Convert the MimeMessage into the raw base64url format Gmail API expects
+            ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+            mimeMessage.writeTo(buffer);
+            String encodedMessage = Base64.getUrlEncoder().withoutPadding().encodeToString(buffer.toByteArray());
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.setBearerAuth(accessToken);
+            headers.setContentType(MediaType.APPLICATION_JSON);
+
+            Map<String, String> requestBody = Map.of("raw", encodedMessage);
+            HttpEntity<Map<String, String>> requestEntity = new HttpEntity<>(requestBody, headers);
+
+            ResponseEntity<String> response = restTemplate.exchange(
+                    GMAIL_SEND_URL, HttpMethod.POST, requestEntity, String.class);
+
+            log.info("Email successfully dispatched via Gmail API from {} to {}. Response: {}",
+                    userEmail, recipientEmail, response.getStatusCode());
 
         } catch (Exception e) {
-            log.error("SMTP outbound transmission failed during dynamic session execution.", e);
-            throw new RuntimeException("Failed to dispatch dynamic email via user OAuth2 ecosystem: " + e.getMessage(),
-                    e);
+            log.error("Gmail API outbound transmission failed.", e);
+            throw new RuntimeException("Failed to dispatch email via Gmail API: " + e.getMessage(), e);
         }
     }
 }
