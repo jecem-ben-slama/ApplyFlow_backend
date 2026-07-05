@@ -34,7 +34,7 @@ public class DevSecurityConfig {
                                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                                 .csrf(csrf -> csrf.disable())
                                 .authorizeHttpRequests(auth -> auth
-                                                .requestMatchers("/", "/login/**", "/oauth2/**", "/actuator/health").permitAll() // Public
+                                                .requestMatchers("/", "/login/**", "/oauth2/**").permitAll() // Public
                                                                                                              // login
                                                                                                              // endpoints
                                                 .anyRequest().authenticated() // Enforces authentication for everything
