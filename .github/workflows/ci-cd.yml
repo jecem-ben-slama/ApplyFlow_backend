@@ -31,14 +31,11 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - name: Update Render service image and deploy
+      - name: Trigger Render deploy with specific image
         run: |
-          curl -X PATCH "https://api.render.com/v1/services/${{ secrets.RENDER_SERVICE_ID }}" \
-            -H "Authorization: Bearer ${{ secrets.RENDER_API_KEY }}" \
-            -H "Content-Type: application/json" \
-            -d '{
-              "imagePath": "ghcr.io/${{ github.repository_owner }}/tracker-api:${{ github.sha }}"
-            }'
+          IMG_URL="ghcr.io/${{ github.repository_owner }}/tracker-api:${{ github.sha }}"
+          ENCODED_IMG_URL=$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe=''))" "$IMG_URL")
+          curl -f "${{ secrets.RENDER_DEPLOY_HOOK_URL }}&imgURL=$ENCODED_IMG_URL"
 
       - name: Wait for boot
         run: sleep 30
@@ -47,7 +44,7 @@ jobs:
         run: |
           for i in {1..10}; do
             echo "Attempt $i: Checking health at ${{ secrets.RENDER_HEALTH_URL }}/actuator/health"
-            if curl -sf -v "${{ secrets.RENDER_HEALTH_URL }}/actuator/health"; then
+            if curl -sf "${{ secrets.RENDER_HEALTH_URL }}/actuator/health"; then
               echo "Backend healthy"
               exit 0
             fi
