@@ -38,7 +38,7 @@ public class SecurityConfig {
                                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                                 .csrf(csrf -> csrf.disable())
                                 .authorizeHttpRequests(auth -> auth
-                                                .requestMatchers("/", "/login/**", "/oauth2/**").permitAll()
+                                                .requestMatchers("/", "/login/**", "/oauth2/**","/actuator/health").permitAll()
                                                 .anyRequest().authenticated())
                                 .oauth2Login(oauth2 -> oauth2
                                                 // Appends authorization customizers for obtaining refresh tokens and
