@@ -16,10 +16,9 @@ import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import java.util.List;
-import java.util.Set;
 
 @Configuration
-@Profile("dev") // Keeps it isolated to your dev environment
+@Profile("dev")
 @EnableWebSecurity
 @RequiredArgsConstructor
 public class DevSecurityConfig {
@@ -28,22 +27,17 @@ public class DevSecurityConfig {
         private final OAuth2SuccessHandler oAuth2SuccessHandler;
 
         @Bean
-        public SecurityFilterChain devSecurityFilterChain(HttpSecurity http,
+        public SecurityFilterChain devSecurityFilterChain(
+                        HttpSecurity http,
                         ClientRegistrationRepository clientRegistrationRepository) throws Exception {
+
                 http
                                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                                 .csrf(csrf -> csrf.disable())
                                 .authorizeHttpRequests(auth -> auth
-                                                .requestMatchers("/", "/login/**", "/oauth2/**").permitAll() // Public
-                                                                                                             // login
-                                                                                                             // endpoints
-                                                .anyRequest().authenticated() // Enforces authentication for everything
-                                                                              // else in dev!
-                                )
+                                                .requestMatchers("/", "/login/**", "/oauth2/**").permitAll()
+                                                .anyRequest().authenticated())
                                 .oauth2Login(oauth2 -> oauth2
-                                                // Appends the offline access parameters and email scopes to get the
-                                                // refresh
-                                                // token in dev
                                                 .authorizationEndpoint(auth -> auth
                                                                 .authorizationRequestResolver(
                                                                                 authorizationRequestResolver(
@@ -58,47 +52,44 @@ public class DevSecurityConfig {
         @Bean
         public CorsConfigurationSource corsConfigurationSource() {
                 CorsConfiguration configuration = new CorsConfiguration();
-                configuration.setAllowedOrigins(List.of("http://localhost:4200")); // Hardcoded for Angular dev server
-                configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
+
+                configuration.setAllowedOrigins(
+                                List.of("http://localhost:4200"));
+
+                configuration.setAllowedMethods(
+                                List.of("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
+
                 configuration.setAllowedHeaders(List.of("*"));
                 configuration.setAllowCredentials(true);
 
                 UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-                source.registerCorsConfiguration("/**", configuration); // Dynamic routing across auth & API
+
+                source.registerCorsConfiguration("/**", configuration);
+
                 return source;
         }
 
         /**
-         * Customizes the initial Google redirection request to ensure offline
-         * parameters and missing Gmail API transmission scopes are requested cleanly.
+         * Only customize OAuth flow parameters.
+         * Scopes are managed in application.properties.
          */
         private OAuth2AuthorizationRequestResolver authorizationRequestResolver(
                         ClientRegistrationRepository clientRegistrationRepository) {
 
                 DefaultOAuth2AuthorizationRequestResolver resolver = new DefaultOAuth2AuthorizationRequestResolver(
-                                clientRegistrationRepository, "/oauth2/authorization");
+                                clientRegistrationRepository,
+                                "/oauth2/authorization");
 
-                resolver.setAuthorizationRequestCustomizer(customizer -> customizer
-                                // Inject mandatory SMTP transmission scopes directly as a Set collection
-                                .scopes(Set.of(
-                                                "openid",
-                                                "profile",
-                                                "email",
-                                                "https://mail.google.com/",
-                                                "https://www.googleapis.com/auth/drive.readonly"))
-                                // Keep safe single-parameter extraction strategy intact
-                                .additionalParameters(params -> {
-                                        // Forcefully remove parameters first to eliminate Google Error 400 parameter
-                                        // duplicates
-                                        params.remove("access_type");
-                                        params.remove("prompt");
+                resolver.setAuthorizationRequestCustomizer(customizer -> customizer.additionalParameters(params -> {
 
-                                        // Inject single clean parameters safely
-                                        params.put("access_type", "offline"); // Crucial parameter to return
-                                                                              // refresh_token
-                                        params.put("prompt", "consent"); // Forces user to re-consent so token isn't
-                                                                         // missing
-                                }));
+                        // Required to receive refresh_token
+                        params.remove("access_type");
+                        params.remove("prompt");
+
+                        params.put("access_type", "offline");
+                        params.put("prompt", "consent");
+                }));
+
                 return resolver;
         }
 }

@@ -5,10 +5,15 @@ import org.springframework.security.oauth2.core.oidc.OidcIdToken;
 import org.springframework.security.oauth2.core.oidc.OidcUserInfo;
 import org.springframework.security.oauth2.core.oidc.user.OidcUser;
 
+import java.io.Serializable; // 1. Added serialization utility import
 import java.util.Collection;
 import java.util.Map;
 
-public class CustomOidcUserWrapper implements OidcUser {
+// 2. Added "implements Serializable" to authorize table-saving conversion actions
+public class CustomOidcUserWrapper implements OidcUser, Serializable {
+
+    // 3. Established a tracking safety identity marker version
+    private static final long serialVersionUID = 1L;
 
     private final OidcUser oidcUser;
     private final Long id; // Your database primary key

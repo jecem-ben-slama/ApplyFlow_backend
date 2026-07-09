@@ -35,10 +35,14 @@ public class User {
 
     @Column(name = "picture_url", columnDefinition = "TEXT")
     private String pictureUrl;
-    
+
     @Convert(converter = EncryptedStringConverter.class)
     @Column(name = "refresh_token", columnDefinition = "TEXT")
     private String refreshToken;
+
+    @Convert(converter = EncryptedStringConverter.class)
+    @Column(name = "access_token", columnDefinition = "TEXT")
+    private String accessToken;
 
     @Column(name = "token_expiry")
     private LocalDateTime tokenExpiry;

@@ -4,6 +4,7 @@ import com.applyflow.tracker_api.dtos.ApplicationCreateDto;
 import com.applyflow.tracker_api.models.*;
 import com.applyflow.tracker_api.repositories.*;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j; // 1. Added Slf4j for professional logging
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -14,6 +15,7 @@ import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j // Implements logger instance natively
 public class ApplicationService {
 
     private final ApplicationRepository applicationRepository;
@@ -31,7 +33,6 @@ public class ApplicationService {
                 .orElseThrow(() -> new RuntimeException(
                         "Template not found or access denied for id: " + dto.getTemplateId()));
 
-        // ApplicationService.java — replace the cvVariant lookup
         CvVariant cvVariant = null;
         if (dto.getCvVariantId() != null) {
             cvVariant = cvVariantRepository.findByIdAndUserId(dto.getCvVariantId(), dto.getUserId())
@@ -89,11 +90,14 @@ public class ApplicationService {
                 .skills(selectedSkills)
                 .notes(dto.getNotes())
                 .build();
-        System.out.println("Status after save: " + application.getStatus());
+
+        log.info("Compiling fresh application tracking context for company: {}", application.getCompanyName());
 
         return applicationRepository.save(application);
     }
 
+    // 2. Added read-only transaction boundary to optimize query pipeline stream
+    @Transactional(readOnly = true)
     public Page<Application> getAllApplicationsForUser(
             Long userId, String status, String keyword, Pageable pageable) {
 
@@ -111,6 +115,8 @@ public class ApplicationService {
         }
     }
 
+    // 3. Added read-only transaction flag to single retrieval
+    @Transactional(readOnly = true)
     public Application getApplicationByIdAndUser(Long id, Long userId) {
         return applicationRepository.findByIdAndUserId(id, userId)
                 .orElseThrow(() -> new RuntimeException("Application tracking record not found or access denied."));

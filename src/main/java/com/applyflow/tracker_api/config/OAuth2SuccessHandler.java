@@ -60,18 +60,13 @@ public class OAuth2SuccessHandler implements AuthenticationSuccessHandler {
         if (client != null) {
             if (client.getRefreshToken() != null) {
                 refreshToken = client.getRefreshToken().getTokenValue();
-                log.info("Successfully intercepted raw refresh_token parameter stream from client context.");
-            } else {
-                log.warn("Refresh token was missing from Google response payload context.");
-            }
+            } 
 
             Instant expiresAt = client.getAccessToken().getExpiresAt();
             if (expiresAt != null) {
                 tokenExpiry = LocalDateTime.ofInstant(expiresAt, ZoneId.systemDefault());
             }
-        } else {
-            log.error("CRITICAL: AuthorizedClient context returned null. Token mapping execution failed.");
-        }
+        } 
 
         // Find or build the persistent user identity row matrix
         User user = userRepository.findByGoogleSub(googleSub).orElseGet(() -> {

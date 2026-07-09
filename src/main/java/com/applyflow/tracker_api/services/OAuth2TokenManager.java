@@ -20,6 +20,10 @@ public class OAuth2TokenManager {
 
     private final UserRepository userRepository;
 
+    // How long before actual expiry we treat the cached token as "stale" and
+    // force a refresh. Keeps us from handing out a token that dies mid-request.
+    private static final long EXPIRY_BUFFER_MINUTES = 2;
+
     // Pulls your existing client registration details from
     // application.yml/properties
     @Value("${spring.security.oauth2.client.registration.google.client-id}")
@@ -30,7 +34,8 @@ public class OAuth2TokenManager {
 
     /**
      * Checks token freshness and handles automatic background renewal via Google
-     * API.
+     * API. Returns the cached access token if it's still valid, otherwise
+     * refreshes it via the stored refresh token.
      */
     public String getValidAccessToken(User user) {
         // If the token is missing a refresh token entirely, we can't refresh it
@@ -38,6 +43,13 @@ public class OAuth2TokenManager {
             log.error("Missing refresh token configuration context for user: {}", user.getEmail());
             throw new RuntimeException("No OAuth2 refresh token found for user: " + user.getEmail()
                     + ". Please sign out and log back in.");
+        }
+
+        // Reuse the cached access token if it's still valid, avoiding an
+        // unnecessary round trip to Google on every call.
+        if (isAccessTokenStillValid(user)) {
+            log.debug("Reusing cached Google access token for: {}", user.getEmail());
+            return user.getAccessToken();
         }
 
         try {
@@ -58,6 +70,7 @@ public class OAuth2TokenManager {
             Long expiresAtSeconds = response.getExpiresInSeconds();
             long safeBufferSeconds = (expiresAtSeconds != null) ? expiresAtSeconds : 3600L;
 
+            user.setAccessToken(newAccessToken);
             user.setTokenExpiry(LocalDateTime.now().plusSeconds(safeBufferSeconds));
             user.setUpdatedAt(LocalDateTime.now());
             userRepository.save(user);
@@ -67,7 +80,24 @@ public class OAuth2TokenManager {
 
         } catch (Exception e) {
             log.error("Google token validation engine rejection error encountered.", e);
-            throw new RuntimeException("OAuth2 refresh token execution layer failed: " + e.getMessage(), e);
+
+            // The refresh token itself may have been revoked (user removed app
+            // access, changed password, etc). Clear it so we fail fast and
+            // clearly next time instead of retrying a token that will never work.
+            user.setRefreshToken(null);
+            user.setAccessToken(null);
+            user.setTokenExpiry(null);
+            userRepository.save(user);
+
+            throw new RuntimeException("OAuth2 refresh token execution layer failed for user "
+                    + user.getEmail() + ". Please sign out and log back in.", e);
         }
+    }
+
+    private boolean isAccessTokenStillValid(User user) {
+        return user.getAccessToken() != null
+                && !user.getAccessToken().isBlank()
+                && user.getTokenExpiry() != null
+                && user.getTokenExpiry().isAfter(LocalDateTime.now().plusMinutes(EXPIRY_BUFFER_MINUTES));
     }
 }

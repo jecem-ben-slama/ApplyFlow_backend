@@ -17,7 +17,6 @@ import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import java.util.List;
-import java.util.Set;
 
 @Configuration
 @Profile("prod")
@@ -74,28 +73,18 @@ public class SecurityConfig {
                         ClientRegistrationRepository clientRegistrationRepository) {
 
                 DefaultOAuth2AuthorizationRequestResolver resolver = new DefaultOAuth2AuthorizationRequestResolver(
-                                clientRegistrationRepository, "/oauth2/authorization");
+                                clientRegistrationRepository,
+                                "/oauth2/authorization");
 
-                resolver.setAuthorizationRequestCustomizer(customizer -> customizer
-                                // Inject mandatory SMTP transmission scopes directly as a Set collection
-                                .scopes(Set.of(
-                                                "openid",
-                                                "profile",
-                                                "email",
-                                                "https://mail.google.com/",
-                                                "https://www.googleapis.com/auth/drive.readonly"))
-                                // Keep safe single-parameter extraction strategy intact
-                                .additionalParameters(params -> {
-                                        // Forcefully remove parameters first to eliminate Google Error 400 parameter
-                                        // duplicates
-                                        params.remove("access_type");
-                                        params.remove("prompt");
+                resolver.setAuthorizationRequestCustomizer(customizer -> customizer.additionalParameters(params -> {
+                        // Force refresh token generation
+                        params.remove("access_type");
+                        params.remove("prompt");
 
-                                        // Inject single clean parameters safely
-                                        params.put("access_type", "offline"); // Crucial parameter to return
-                                                                              // refresh_token
-                                        params.put("prompt", "consent"); // Forces user to see the permission checkboxes
-                                }));
+                        params.put("access_type", "offline");
+                        params.put("prompt", "consent");
+                }));
+
                 return resolver;
         }
 }
