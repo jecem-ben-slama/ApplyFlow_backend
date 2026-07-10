@@ -1,6 +1,7 @@
 package com.applyflow.tracker_api.config;
 
 import com.applyflow.tracker_api.services.CustomOAuth2UserService;
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -36,12 +37,25 @@ public class SecurityConfig {
                 http
                                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                                 .csrf(csrf -> csrf.disable())
+
+                                // 1. Turn off default browser-facing UI configurations completely
+                                .formLogin(form -> form.disable())
+                                .httpBasic(basic -> basic.disable())
+
+                                // 2. Catch unauthenticated requests and return 401 instead of a redirect
+                                .exceptionHandling(exceptions -> exceptions
+                                                .authenticationEntryPoint((request, response, authException) -> {
+                                                        response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                                                        response.setContentType("application/json");
+                                                        response.getWriter().write(
+                                                                        "{\"error\": \"Unauthorized\", \"message\": \"Authentication required.\"}");
+                                                }))
+
                                 .authorizeHttpRequests(auth -> auth
-                                                .requestMatchers("/", "/login/**", "/oauth2/**","/actuator/health").permitAll()
+                                                .requestMatchers("/", "/login/**", "/oauth2/**", "/actuator/health")
+                                                .permitAll()
                                                 .anyRequest().authenticated())
                                 .oauth2Login(oauth2 -> oauth2
-                                                // Appends authorization customizers for obtaining refresh tokens and
-                                                // email scopes
                                                 .authorizationEndpoint(auth -> auth
                                                                 .authorizationRequestResolver(
                                                                                 authorizationRequestResolver(
