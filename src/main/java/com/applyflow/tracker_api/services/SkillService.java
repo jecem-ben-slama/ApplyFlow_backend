@@ -1,5 +1,6 @@
 package com.applyflow.tracker_api.services;
 
+import com.applyflow.tracker_api.dtos.SkillDto;
 import com.applyflow.tracker_api.models.Category;
 import com.applyflow.tracker_api.models.Skill;
 import com.applyflow.tracker_api.repositories.CategoryRepository;
@@ -20,7 +21,7 @@ public class SkillService {
     private final CategoryRepository categoryRepository;
 
     @Transactional
-    public Skill createSkill(Skill skill, Long categoryId, Long userId) {
+    public SkillDto createSkill(Skill skill, Long categoryId, Long userId) {
         String cleanName = skill.getName().toLowerCase().trim();
 
         if (skillRepository.findByUserIdAndName(userId, cleanName).isPresent()) {
@@ -37,33 +38,42 @@ public class SkillService {
         }
 
         skill.setName(cleanName);
-        return skillRepository.save(skill);
+        Skill saved = skillRepository.save(skill);
+        return convertToDto(saved);
     }
 
-    public Page<Skill> getSkillsForUser(Long userId, Long categoryId, String search, Pageable pageable) {
+    @Transactional(readOnly = true)
+    public Page<SkillDto> getSkillsForUser(Long userId, Long categoryId, String search, Pageable pageable) {
         boolean hasSearch = search != null && !search.isBlank();
         boolean hasCategory = categoryId != null;
+        Page<Skill> skillsPage;
 
         if (hasSearch && hasCategory) {
-            return skillRepository.searchByUserIdAndCategoryIdAndTerm(userId, categoryId, search, pageable);
+            skillsPage = skillRepository.searchByUserIdAndCategoryIdAndTerm(userId, categoryId, search, pageable);
         } else if (hasSearch) {
-            return skillRepository.searchByUserIdAndTerm(userId, search, pageable);
+            skillsPage = skillRepository.searchByUserIdAndTerm(userId, search, pageable);
         } else if (hasCategory) {
-            return skillRepository.findByUserIdAndCategoryId(userId, categoryId, pageable);
+            skillsPage = skillRepository.findByUserIdAndCategoryId(userId, categoryId, pageable);
         } else {
-            return skillRepository.findByUserId(userId, pageable);
+            skillsPage = skillRepository.findByUserId(userId, pageable);
         }
+
+        return skillsPage.map(this::convertToDto);
     }
 
-    public Skill getSkillByIdAndUser(Long id, Long userId) {
-        return skillRepository.findByIdAndUserId(id, userId)
+    @Transactional(readOnly = true)
+    public SkillDto getSkillByIdAndUser(Long id, Long userId) {
+        Skill skill = skillRepository.findByIdAndUserId(id, userId)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "Skill not found or access denied."));
+        return convertToDto(skill);
     }
 
     @Transactional
-    public Skill updateSkill(Long id, Long userId, Skill skillDetails, Long categoryId) {
-        Skill existing = getSkillByIdAndUser(id, userId);
+    public SkillDto updateSkill(Long id, Long userId, Skill skillDetails, Long categoryId) {
+        Skill existing = skillRepository.findByIdAndUserId(id, userId)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Skill not found or access denied."));
 
         String cleanName = skillDetails.getName().toLowerCase().trim();
         if (!existing.getName().equals(cleanName) &&
@@ -86,12 +96,27 @@ public class SkillService {
             existing.setCategory(null);
         }
 
-        return skillRepository.save(existing);
+        Skill updated = skillRepository.save(existing);
+        return convertToDto(updated);
     }
 
     @Transactional
     public void deleteSkill(Long id, Long userId) {
-        Skill skill = getSkillByIdAndUser(id, userId);
+        Skill skill = skillRepository.findByIdAndUserId(id, userId)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Skill not found or access denied."));
         skillRepository.delete(skill);
+    }
+
+    private SkillDto convertToDto(Skill skill) {
+        return SkillDto.builder()
+                .id(skill.getId())
+                .name(skill.getName())
+                .sentenceEn(skill.getSentenceEn())
+                .sentenceFr(skill.getSentenceFr())
+                .userId(skill.getUser() != null ? skill.getUser().getId() : null)
+                .categoryId(skill.getCategory() != null ? skill.getCategory().getId() : null)
+                .categoryName(skill.getCategory() != null ? skill.getCategory().getName() : null)
+                .build();
     }
 }

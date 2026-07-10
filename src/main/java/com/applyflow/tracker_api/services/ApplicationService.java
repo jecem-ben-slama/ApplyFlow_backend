@@ -1,21 +1,25 @@
 package com.applyflow.tracker_api.services;
 
 import com.applyflow.tracker_api.dtos.ApplicationCreateDto;
+import com.applyflow.tracker_api.dtos.ApplicationResponseDto;
 import com.applyflow.tracker_api.models.*;
 import com.applyflow.tracker_api.repositories.*;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j; // 1. Added Slf4j for professional logging
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.HashSet;
+import java.util.Objects;
 import java.util.Set;
+import java.util.Collections;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
-@Slf4j // Implements logger instance natively
+@Slf4j
 public class ApplicationService {
 
     private final ApplicationRepository applicationRepository;
@@ -25,7 +29,7 @@ public class ApplicationService {
     private final UserRepository userRepository;
 
     @Transactional
-    public Application createAndCompileApplication(ApplicationCreateDto dto) {
+    public ApplicationResponseDto createAndCompileApplication(ApplicationCreateDto dto) {
         User user = userRepository.findById(dto.getUserId())
                 .orElseThrow(() -> new RuntimeException("User not found with id: " + dto.getUserId()));
 
@@ -93,48 +97,78 @@ public class ApplicationService {
 
         log.info("Compiling fresh application tracking context for company: {}", application.getCompanyName());
 
-        return applicationRepository.save(application);
+        Application saved = applicationRepository.save(application);
+        return convertToDto(saved);
     }
 
-    // 2. Added read-only transaction boundary to optimize query pipeline stream
     @Transactional(readOnly = true)
-    public Page<Application> getAllApplicationsForUser(
+    public Page<ApplicationResponseDto> getAllApplicationsForUser(
             Long userId, String status, String keyword, Pageable pageable) {
 
         boolean hasStatus = status != null && !status.isBlank();
         boolean hasKeyword = keyword != null && !keyword.isBlank();
+        Page<Application> applicationsPage;
 
         if (hasStatus && hasKeyword) {
-            return applicationRepository.searchByKeywordAndStatus(userId, keyword, status, pageable);
+            applicationsPage = applicationRepository.searchByKeywordAndStatus(userId, keyword, status, pageable);
         } else if (hasStatus) {
-            return applicationRepository.findByUserIdAndStatusIgnoreCase(userId, status, pageable);
+            applicationsPage = applicationRepository.findByUserIdAndStatusIgnoreCase(userId, status, pageable);
         } else if (hasKeyword) {
-            return applicationRepository.searchByKeyword(userId, keyword, pageable);
+            applicationsPage = applicationRepository.searchByKeyword(userId, keyword, pageable);
         } else {
-            return applicationRepository.findByUserId(userId, pageable);
+            applicationsPage = applicationRepository.findByUserId(userId, pageable);
         }
+
+        return applicationsPage.map(this::convertToDto);
     }
 
-    // 3. Added read-only transaction flag to single retrieval
     @Transactional(readOnly = true)
-    public Application getApplicationByIdAndUser(Long id, Long userId) {
-        return applicationRepository.findByIdAndUserId(id, userId)
+    public ApplicationResponseDto getApplicationByIdAndUser(Long id, Long userId) {
+        Application app = applicationRepository.findByIdAndUserId(id, userId)
                 .orElseThrow(() -> new RuntimeException("Application tracking record not found or access denied."));
+        return convertToDto(app);
     }
 
     @Transactional
-    public Application updateApplicationStatusOrNotes(Long id, Long userId, String status, String notes) {
-        Application existing = getApplicationByIdAndUser(id, userId);
+    public ApplicationResponseDto updateApplicationStatusOrNotes(Long id, Long userId, String status, String notes) {
+        Application existing = applicationRepository.findByIdAndUserId(id, userId)
+                .orElseThrow(() -> new RuntimeException("Application tracking record not found or access denied."));
+
         if (status != null)
             existing.setStatus(status);
         if (notes != null)
             existing.setNotes(notes);
-        return applicationRepository.save(existing);
+
+        Application updated = applicationRepository.save(existing);
+        return convertToDto(updated);
     }
 
     @Transactional
     public void deleteApplication(Long id, Long userId) {
-        Application app = getApplicationByIdAndUser(id, userId);
+        Application app = applicationRepository.findByIdAndUserId(id, userId)
+                .orElseThrow(() -> new RuntimeException("Application tracking record not found or access denied."));
         applicationRepository.delete(app);
+    }
+
+    private ApplicationResponseDto convertToDto(Application app) {
+        return ApplicationResponseDto.builder()
+                .id(app.getId())
+                .companyName(app.getCompanyName())
+                .jobTitle(app.getJobTitle())
+                .recipientEmail(app.getRecipientEmail())
+                .language(app.getLanguage())
+                .status(app.getStatus())
+                .generatedSubject(app.getGeneratedSubject())
+                .generatedBody(app.getGeneratedBody())
+                .dateApplied(app.getDateApplied())
+                .notes(app.getNotes())
+                .templateId(app.getTemplate() != null ? app.getTemplate().getId() : null)
+                .cvVariantId(app.getCvVariant() != null ? app.getCvVariant().getId() : null)
+                .userId(app.getUser() != null ? app.getUser().getId() : null)
+                .skillIds(app.getSkills() != null
+                        ? app.getSkills().stream().filter(Objects::nonNull).map(skill -> skill.getId())
+                                .collect(Collectors.toSet())
+                        : Collections.emptySet())
+                .build();
     }
 }

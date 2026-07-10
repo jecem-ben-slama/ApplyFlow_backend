@@ -36,9 +36,9 @@ public class SkillController {
                                 .user(User.builder().id(userId).build())
                                 .build();
 
-                Skill saved = skillService.createSkill(skillEntity, skillDto.getCategoryId(), userId);
+                SkillDto savedDto = skillService.createSkill(skillEntity, skillDto.getCategoryId(), userId);
                 return new ResponseEntity<>(
-                                ApiResponse.success("Skill created successfully", convertToDto(saved)),
+                                ApiResponse.success("Skill created successfully", savedDto),
                                 HttpStatus.CREATED);
         }
 
@@ -59,8 +59,7 @@ public class SkillController {
                 Pageable pageable = PageRequest.of(page, size, sort);
 
                 Page<SkillDto> responseData = skillService
-                                .getSkillsForUser(userId, categoryId, search, pageable)
-                                .map(this::convertToDto);
+                                .getSkillsForUser(userId, categoryId, search, pageable);
 
                 return ResponseEntity.ok(ApiResponse.success("Skills retrieved successfully", responseData));
         }
@@ -68,8 +67,8 @@ public class SkillController {
         @GetMapping("/{id}")
         public ResponseEntity<ApiResponse<SkillDto>> getSkillById(@PathVariable Long id) {
                 Long userId = securityContextService.getCurrentUserId();
-                Skill skill = skillService.getSkillByIdAndUser(id, userId);
-                return ResponseEntity.ok(ApiResponse.success("Skill retrieved successfully", convertToDto(skill)));
+                SkillDto skillDto = skillService.getSkillByIdAndUser(id, userId);
+                return ResponseEntity.ok(ApiResponse.success("Skill retrieved successfully", skillDto));
         }
 
         @PutMapping("/{id}")
@@ -85,8 +84,8 @@ public class SkillController {
                                 .sentenceFr(skillDto.getSentenceFr())
                                 .build();
 
-                Skill updated = skillService.updateSkill(id, userId, skillDetails, skillDto.getCategoryId());
-                return ResponseEntity.ok(ApiResponse.success("Skill updated successfully", convertToDto(updated)));
+                SkillDto updatedDto = skillService.updateSkill(id, userId, skillDetails, skillDto.getCategoryId());
+                return ResponseEntity.ok(ApiResponse.success("Skill updated successfully", updatedDto));
         }
 
         @DeleteMapping("/{id}")
@@ -94,17 +93,5 @@ public class SkillController {
                 Long userId = securityContextService.getCurrentUserId();
                 skillService.deleteSkill(id, userId);
                 return ResponseEntity.ok(ApiResponse.success("Skill deleted successfully"));
-        }
-
-        private SkillDto convertToDto(Skill skill) {
-                return SkillDto.builder()
-                                .id(skill.getId())
-                                .name(skill.getName())
-                                .sentenceEn(skill.getSentenceEn())
-                                .sentenceFr(skill.getSentenceFr())
-                                .userId(skill.getUser() != null ? skill.getUser().getId() : null)
-                                .categoryId(skill.getCategory() != null ? skill.getCategory().getId() : null)
-                                .categoryName(skill.getCategory() != null ? skill.getCategory().getName() : null)
-                                .build();
         }
 }
