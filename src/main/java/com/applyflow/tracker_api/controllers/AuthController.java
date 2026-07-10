@@ -5,9 +5,13 @@ import com.applyflow.tracker_api.dtos.ApiResponse;
 import com.applyflow.tracker_api.dtos.UserDto;
 import com.applyflow.tracker_api.models.User;
 import com.applyflow.tracker_api.repositories.UserRepository;
+import com.applyflow.tracker_api.services.AuthService;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
@@ -19,6 +23,7 @@ public class AuthController {
 
         private final UserRepository userRepository;
         private final SecurityContextService securityContextService;
+        private final AuthService authService;
 
         @GetMapping("/me")
         public ApiResponse<UserDto> getCurrentUser() {
@@ -52,6 +57,16 @@ public class AuthController {
                                 .success(true)
                                 .message("Session verified successfully.")
                                 .data(userDto)
+                                .build();
+        }
+
+        @PostMapping("/logout")
+        public ApiResponse<Void> logout(HttpServletRequest request, HttpServletResponse response) {
+                authService.logout(request, response);
+
+                return ApiResponse.<Void>builder()
+                                .success(true)
+                                .message("Logged out successfully.")
                                 .build();
         }
 }
