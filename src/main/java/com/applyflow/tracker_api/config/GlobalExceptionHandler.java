@@ -1,15 +1,21 @@
 package com.applyflow.tracker_api.config;
 
 import com.applyflow.tracker_api.dtos.ApiResponse;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
-import org.springframework.dao.DataIntegrityViolationException;
-import java.util.NoSuchElementException;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.DataAccessResourceFailureException;
+import org.springframework.dao.DataAccessException;
+
+import java.net.ConnectException;
+import java.util.NoSuchElementException;
 
 @RestControllerAdvice
+@Slf4j // Injects logger for clean production log streams on Render
 public class GlobalExceptionHandler {
 
     // 1. Catch business validation rules
@@ -26,7 +32,7 @@ public class GlobalExceptionHandler {
                 HttpStatus.NOT_FOUND);
     }
 
-    // 3. Catch database SQL state failures
+    // 3. Catch database SQL state constraint failures (e.g., foreign keys)
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<ApiResponse<Void>> handleDatabaseConstraints(DataIntegrityViolationException ex) {
         return new ResponseEntity<>(
@@ -34,7 +40,29 @@ public class GlobalExceptionHandler {
                 HttpStatus.CONFLICT);
     }
 
-    // 4. Catch your SecurityContextService 401 exceptions cleanly
+    // NEW 4. Catch Network/Database Connection Drops explicitly (e.g., database
+    // pool exhausts or goes to sleep)
+    @ExceptionHandler({ DataAccessResourceFailureException.class, ConnectException.class })
+    public ResponseEntity<ApiResponse<Void>> handleDatabaseConnectionErrors(Exception ex) {
+        log.error("CRITICAL: Database connection failed or dropped! Context: ", ex);
+        return new ResponseEntity<>(
+                ApiResponse
+                        .error("The database service is temporarily unavailable. Please try again in a few moments."),
+                HttpStatus.SERVICE_UNAVAILABLE); // 503 Service Unavailable
+    }
+
+    // NEW 5. Catch Hibernate/Schema mapping errors (e.g., a table or column name
+    // doesn't exist)
+    @ExceptionHandler(DataAccessException.class)
+    public ResponseEntity<ApiResponse<Void>> handleGenericDatabaseErrors(DataAccessException ex) {
+        log.error("DATABASE SCHEMA ERROR: Query execution or Hibernate structure matching failed: ", ex);
+        return new ResponseEntity<>(
+                ApiResponse
+                        .error("A data access error occurred while processing your request. Please contact support."),
+                HttpStatus.INTERNAL_SERVER_ERROR); // 500 Internal Server Error
+    }
+
+    // 6. Catch your SecurityContextService 401 exceptions cleanly
     @ExceptionHandler(ResponseStatusException.class)
     public ResponseEntity<ApiResponse<Void>> handleResponseStatusException(ResponseStatusException ex) {
         ApiResponse<Void> response = ApiResponse.<Void>builder()
@@ -46,12 +74,11 @@ public class GlobalExceptionHandler {
         return new ResponseEntity<>(response, ex.getStatusCode());
     }
 
-    // 5. The SINGLE unified catch-all fallback handler for general unexpected
+    // 7. The SINGLE unified catch-all fallback handler for general unexpected
     // errors
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiResponse<Void>> handleGeneralException(Exception ex) {
-        // Logs details out to server stdout console logs for back-end debugging
-        ex.printStackTrace();
+        log.error("UNHANDLED RUNTIME EXCEPTION DETECTED: ", ex);
 
         ApiResponse<Void> response = ApiResponse.<Void>builder()
                 .success(false)
