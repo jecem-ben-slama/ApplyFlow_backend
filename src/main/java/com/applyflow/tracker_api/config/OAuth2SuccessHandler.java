@@ -42,33 +42,34 @@ public class OAuth2SuccessHandler implements AuthenticationSuccessHandler {
         String googleSub = oAuth2User.getAttribute("sub");
         String email = oAuth2User.getAttribute("email");
 
-        // Extract profile details here as well
         String firstName = oAuth2User.getAttribute("given_name");
         String lastName = oAuth2User.getAttribute("family_name");
         String pictureUrl = oAuth2User.getAttribute("picture");
 
         log.info("OAuth2SuccessHandler processing authentication routing for: {}", email);
 
-        // Fetch the authorized client mapping containing credentials
         OAuth2AuthorizedClient client = authorizedClientService.loadAuthorizedClient(
                 oauthToken.getAuthorizedClientRegistrationId(),
                 oauthToken.getName());
 
+        String accessToken = null;
         String refreshToken = null;
         LocalDateTime tokenExpiry = null;
 
         if (client != null) {
+            if (client.getAccessToken() != null) {
+                accessToken = client.getAccessToken().getTokenValue();
+
+                Instant expiresAt = client.getAccessToken().getExpiresAt();
+                if (expiresAt != null) {
+                    tokenExpiry = LocalDateTime.ofInstant(expiresAt, ZoneId.systemDefault());
+                }
+            }
             if (client.getRefreshToken() != null) {
                 refreshToken = client.getRefreshToken().getTokenValue();
-            } 
-
-            Instant expiresAt = client.getAccessToken().getExpiresAt();
-            if (expiresAt != null) {
-                tokenExpiry = LocalDateTime.ofInstant(expiresAt, ZoneId.systemDefault());
             }
-        } 
+        }
 
-        // Find or build the persistent user identity row matrix
         User user = userRepository.findByGoogleSub(googleSub).orElseGet(() -> {
             log.info("Registering brand new user baseline context into repository schema for: {}", email);
             return User.builder()
@@ -77,7 +78,11 @@ public class OAuth2SuccessHandler implements AuthenticationSuccessHandler {
                     .build();
         });
 
-        // Apply updated token credentials and profile details safely
+        // Plain values go in here — EncryptedStringConverter on the entity
+        // handles encryption/decryption transparently via JPA.
+        if (accessToken != null) {
+            user.setAccessToken(accessToken);
+        }
         if (refreshToken != null) {
             user.setRefreshToken(refreshToken);
         }
@@ -85,17 +90,14 @@ public class OAuth2SuccessHandler implements AuthenticationSuccessHandler {
             user.setTokenExpiry(tokenExpiry);
         }
 
-        // Update profile details
         user.setFirstName(firstName);
         user.setLastName(lastName);
         user.setPictureUrl(pictureUrl);
         user.setUpdatedAt(LocalDateTime.now());
 
-        // Save progress down to persistent store
         User savedUser = userRepository.save(user);
         log.info("Successfully committed synchronization states to database engine for ID: {}", savedUser.getId());
 
-        // Upgrade Spring Security Principal to use your CustomOAuth2User
         CustomOAuth2User customPrincipal = new CustomOAuth2User(oAuth2User, savedUser.getId());
 
         OAuth2AuthenticationToken upgradedToken = new OAuth2AuthenticationToken(
@@ -107,8 +109,6 @@ public class OAuth2SuccessHandler implements AuthenticationSuccessHandler {
         log.info("Upgraded Spring Security session context principal with CustomOAuth2User for ID: {}",
                 savedUser.getId());
 
-        // Redirect back to frontend dashboard server (URL is environment-specific,
-        // injected via config)
         response.sendRedirect(frontendUrl);
     }
 }

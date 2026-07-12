@@ -15,6 +15,7 @@ public class SessionConfig {
         serializer.setUseSecureCookie(true);
         serializer.setSameSite("None");
         serializer.setCookiePath("/");
+        serializer.setCookieMaxAge(30 * 24 * 60 * 60); 
         return serializer;
     }
 }

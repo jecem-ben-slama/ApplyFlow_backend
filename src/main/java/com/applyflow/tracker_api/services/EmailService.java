@@ -9,6 +9,7 @@ import jakarta.mail.internet.InternetAddress;
 import jakarta.mail.internet.MimeMessage;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpEntity;
@@ -33,10 +34,13 @@ public class EmailService {
     private final CvVariantRepository cvVariantRepository;
     private final RestTemplate restTemplate = new RestTemplate();
 
+    @Value("${app.api.base-url}")
+    private String baseUrl;
+
     private static final String GMAIL_SEND_URL = "https://gmail.googleapis.com/gmail/v1/users/me/messages/send";
 
     public void sendApplicationEmail(String userEmail, String accessToken, String recipientEmail, String subject,
-            String body, Long cvVariantId) {
+            String body, Long cvVariantId, Long applicationId) {
 
         try {
             // Build the MIME message exactly as before — no SMTP session needed anymore
@@ -47,7 +51,10 @@ public class EmailService {
             helper.setFrom(new InternetAddress(userEmail));
             helper.setTo(recipientEmail);
             helper.setSubject(subject);
-            helper.setText(body, false);
+
+            // Inject the open-tracking pixel right before send, then send as HTML
+            String htmlBody = buildHtmlBodyWithTracking(body, applicationId);
+            helper.setText(htmlBody, true);
 
             if (cvVariantId != null) {
                 CvVariant variant = cvVariantRepository.findById(cvVariantId)
@@ -95,5 +102,22 @@ public class EmailService {
             log.error("Gmail API outbound transmission failed.", e);
             throw new RuntimeException("Failed to dispatch email via Gmail API: " + e.getMessage(), e);
         }
+    }
+
+    private String buildHtmlBodyWithTracking(String plainOrHtmlBody, Long applicationId) {
+        // Preserve line breaks if the incoming body is plain text
+        String htmlSafeBody = plainOrHtmlBody.contains("<")
+                ? plainOrHtmlBody
+                : plainOrHtmlBody.replace("\n", "<br/>");
+
+        if (applicationId == null) {
+            return htmlSafeBody;
+        }
+
+        String trackingPixel = String.format(
+                "<img src=\"%s/api/track/open/%d\" width=\"1\" height=\"1\" style=\"display:none\" alt=\"\" />",
+                baseUrl, applicationId);
+
+        return htmlSafeBody + trackingPixel;
     }
 }

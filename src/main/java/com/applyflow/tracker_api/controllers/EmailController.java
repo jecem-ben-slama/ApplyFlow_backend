@@ -40,7 +40,8 @@ public class EmailController {
                 request.getRecipientEmail(),
                 request.getSubject(),
                 request.getBody(),
-                request.getCvVariantId()); // Pass the CV Variant ID directly
+                request.getCvVariantId(), // Pass the CV Variant ID directly
+                request.getApplicationId()); // Needed to build the tracking pixel URL
 
         return ResponseEntity.ok("Email successfully dispatched via user's Google account!");
     }
@@ -51,5 +52,6 @@ public class EmailController {
         private String subject;
         private String body;
         private Long cvVariantId; // Resolves ID instead of a direct string URL
+        private Long applicationId; // Links this send to an Application for open tracking
     }
 }
