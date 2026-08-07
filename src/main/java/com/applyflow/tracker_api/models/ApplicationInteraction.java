@@ -32,7 +32,7 @@ public class ApplicationInteraction {
     @JoinColumn(name = "application_id", nullable = false)
     private Application application;
 
-    private String interactionType; // e.g., "EMAIL_OPENED"
+    private String interactionType;
     private LocalDateTime timestamp;
-    private String ipAddress; // Optional: Helpful to see if it's a real user
+    private String ipAddress; 
 }
