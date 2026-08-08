@@ -3,7 +3,7 @@ package com.applyflow.tracker_api.repositories;
 import com.applyflow.tracker_api.models.Application;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.jpa.repository.EntityGraph; // 1. Added EntityGraph import
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -43,4 +43,7 @@ public interface ApplicationRepository extends JpaRepository<Application, Long> 
                         @Param("keyword") String keyword,
                         @Param("status") String status,
                         Pageable pageable);
+
+        // Total application count for a user, for the stats summary.
+        long countByUserId(Long userId);
 }

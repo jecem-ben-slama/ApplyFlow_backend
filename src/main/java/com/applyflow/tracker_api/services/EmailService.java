@@ -1,5 +1,6 @@
 package com.applyflow.tracker_api.services;
 
+import com.applyflow.tracker_api.models.ApplicationStatus;
 import com.applyflow.tracker_api.models.CvVariant;
 import com.applyflow.tracker_api.repositories.CvVariantRepository;
 import com.applyflow.tracker_api.services.storage.CvStorageFactory;
@@ -32,6 +33,7 @@ public class EmailService {
 
     private final CvStorageFactory storageFactory;
     private final CvVariantRepository cvVariantRepository;
+    private final ApplicationService applicationService;
     private final RestTemplate restTemplate = new RestTemplate();
 
     @Value("${app.api.base-url}")
@@ -97,6 +99,17 @@ public class EmailService {
 
             log.info("Email successfully dispatched via Gmail API from {} to {}. Response: {}",
                     userEmail, recipientEmail, response.getStatusCode());
+
+            if (applicationId != null) {
+                try {
+                    applicationService.recordSystemStatusEvent(
+                            applicationId, ApplicationStatus.SENT, "Email dispatched via Gmail API");
+                } catch (Exception statusEx) {
+                    // never let a status-tracking failure roll back or mask a successful send
+                    log.warn("Email sent successfully but failed to record SENT status for application {}: {}",
+                            applicationId, statusEx.getMessage());
+                }
+            }
 
         } catch (Exception e) {
             log.error("Gmail API outbound transmission failed.", e);

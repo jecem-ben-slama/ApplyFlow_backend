@@ -14,6 +14,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+
 @RestController
 @RequestMapping("/api/applications")
 @RequiredArgsConstructor
@@ -63,6 +64,8 @@ public class ApplicationController {
         ApplicationResponseDto response = applicationService.getApplicationByIdAndUser(id, userId);
         return ResponseEntity.ok(ApiResponse.success("Application details retrieved successfully", response));
     }
+
+    
 
     @PatchMapping("/{id}")
     public ResponseEntity<ApiResponse<ApplicationResponseDto>> patchApplicationStatusOrNotes(

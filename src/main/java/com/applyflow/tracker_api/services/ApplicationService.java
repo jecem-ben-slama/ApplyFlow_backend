@@ -27,6 +27,7 @@ public class ApplicationService {
     private final CvVariantRepository cvVariantRepository;
     private final SkillRepository skillRepository;
     private final UserRepository userRepository;
+    private final ApplicationEventService applicationEventService;
 
     @Transactional
     public ApplicationResponseDto createAndCompileApplication(ApplicationCreateDto dto) {
@@ -87,7 +88,7 @@ public class ApplicationService {
                 .language(dto.getLanguage())
                 .generatedSubject(compiledSubject)
                 .generatedBody(compiledBody)
-                .status("COMPILED")
+                .status(ApplicationStatus.COMPILED.name())
                 .template(template)
                 .cvVariant(cvVariant)
                 .user(user)
@@ -98,6 +99,8 @@ public class ApplicationService {
         log.info("Compiling fresh application tracking context for company: {}", application.getCompanyName());
 
         Application saved = applicationRepository.save(application);
+        applicationEventService.recordEvent(saved, ApplicationStatus.COMPILED.name(), "Application compiled");
+
         return convertToDto(saved);
     }
 
@@ -134,13 +137,49 @@ public class ApplicationService {
         Application existing = applicationRepository.findByIdAndUserId(id, userId)
                 .orElseThrow(() -> new RuntimeException("Application tracking record not found or access denied."));
 
-        if (status != null)
-            existing.setStatus(status);
-        if (notes != null)
+        if (status != null) {
+            if (!ApplicationStatus.isValid(status)) {
+                throw new IllegalArgumentException("Invalid status: " + status);
+            }
+
+            String normalized = status.toUpperCase();
+            String oldStatus = existing.getStatus();
+
+            existing.setStatus(normalized);
+
+            if (!normalized.equals(oldStatus)) {
+                applicationEventService.recordEvent(existing, normalized, null);
+            }
+        }
+
+        if (notes != null) {
             existing.setNotes(notes);
+        }
 
         Application updated = applicationRepository.save(existing);
         return convertToDto(updated);
+    }
+
+    /**
+     * For system-triggered status transitions (email send confirmation,
+     * open-tracking pixel) that have no authenticated user on the request.
+     * Delegates the forward-only ordering check to ApplicationEventService so
+     * a stale event (e.g. a re-opened email) can't regress a status that has
+     * already moved further along the funnel.
+     */
+    @Transactional
+    public void recordSystemStatusEvent(Long applicationId, ApplicationStatus status, String note) {
+        Application app = applicationRepository.findById(applicationId)
+                .orElseThrow(() -> new RuntimeException("Application not found: " + applicationId));
+
+        String normalized = status.name();
+        String oldStatus = app.getStatus();
+
+        if (applicationEventService.shouldTransition(oldStatus, normalized)) {
+            app.setStatus(normalized);
+            applicationRepository.save(app);
+            applicationEventService.recordEvent(app, normalized, note);
+        }
     }
 
     @Transactional
