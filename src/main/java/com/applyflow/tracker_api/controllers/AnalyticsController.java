@@ -2,14 +2,15 @@ package com.applyflow.tracker_api.controllers;
 
 import com.applyflow.tracker_api.config.SecurityContextService;
 import com.applyflow.tracker_api.dtos.ApiResponse;
+import com.applyflow.tracker_api.dtos.ApplicationSummaryDto;
 import com.applyflow.tracker_api.dtos.StatMetricDto;
 import com.applyflow.tracker_api.services.AnalyticsService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 @RestController
@@ -21,23 +22,49 @@ public class AnalyticsController {
     private final SecurityContextService securityContextService;
 
     @GetMapping("/cv-performance")
-    public ResponseEntity<ApiResponse<List<StatMetricDto>>> getCvStats() {
+    public ResponseEntity<ApiResponse<List<StatMetricDto>>> getCvStats(
+            @RequestParam(required = false) List<String> successStatuses,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime to) {
         Long userId = securityContextService.getCurrentUserId();
-        List<StatMetricDto> stats = analyticsService.getCvVariantStats(userId);
+        List<StatMetricDto> stats = analyticsService.getCvVariantStats(userId, successStatuses, from, to);
         return ResponseEntity.ok(ApiResponse.success("CV variant performance metrics retrieved successfully", stats));
     }
 
     @GetMapping("/language-performance")
-    public ResponseEntity<ApiResponse<List<StatMetricDto>>> getLanguageStats() {
+    public ResponseEntity<ApiResponse<List<StatMetricDto>>> getLanguageStats(
+            @RequestParam(required = false) List<String> successStatuses,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime to) {
         Long userId = securityContextService.getCurrentUserId();
-        List<StatMetricDto> stats = analyticsService.getLanguageStats(userId);
+        List<StatMetricDto> stats = analyticsService.getLanguageStats(userId, successStatuses, from, to);
         return ResponseEntity.ok(ApiResponse.success("Language performance metrics retrieved successfully", stats));
     }
 
     @GetMapping("/job-performance")
-    public ResponseEntity<ApiResponse<List<StatMetricDto>>> getJobStats() {
+    public ResponseEntity<ApiResponse<List<StatMetricDto>>> getJobStats(
+            @RequestParam(required = false) List<String> successStatuses,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime to) {
         Long userId = securityContextService.getCurrentUserId();
-        List<StatMetricDto> stats = analyticsService.getJobTitleStats(userId);
+        List<StatMetricDto> stats = analyticsService.getJobTitleStats(userId, successStatuses, from, to);
         return ResponseEntity.ok(ApiResponse.success("Job post performance metrics retrieved successfully", stats));
+    }
+
+    @GetMapping("/template-performance")
+    public ResponseEntity<ApiResponse<List<StatMetricDto>>> getTemplateStats(
+            @RequestParam(required = false) List<String> successStatuses,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime to) {
+        Long userId = securityContextService.getCurrentUserId();
+        List<StatMetricDto> stats = analyticsService.getTemplateStats(userId, successStatuses, from, to);
+        return ResponseEntity.ok(ApiResponse.success("Template performance metrics retrieved successfully", stats));
+    }
+
+    @GetMapping("/applications")
+    public ResponseEntity<ApiResponse<List<ApplicationSummaryDto>>> listApplications() {
+        Long userId = securityContextService.getCurrentUserId();
+        List<ApplicationSummaryDto> response = analyticsService.listApplicationSummaries(userId);
+        return ResponseEntity.ok(ApiResponse.success("Applications retrieved successfully", response));
     }
 }
