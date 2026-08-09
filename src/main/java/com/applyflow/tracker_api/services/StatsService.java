@@ -271,7 +271,11 @@ public class StatsService {
         if (daysPerApplication.isEmpty()) {
             return null;
         }
-        return daysPerApplication.stream().mapToDouble(Double::doubleValue).average().orElse(0.0);
+        return daysPerApplication.stream()
+                .filter(Objects::nonNull)
+                .mapToDouble(value -> value.doubleValue())
+                .average()
+                .orElse(0.0);
     }
 
     // NOTE: takes the RAW (possibly null) from/to, not the effective (defaulted)
@@ -304,26 +308,6 @@ public class StatsService {
             dates.add(date);
         }
         return dates;
-    }
-
-    private long countApplicationsThatReached(Long userId, String status, LocalDateTime from, LocalDateTime to) {
-        return applicationEventRepository
-                .findByApplication_User_IdAndStatusInRange(userId, status, from, to)
-                .stream()
-                .map(e -> e.getApplication().getId())
-                .distinct()
-                .count();
-    }
-
-    private Map<Long, LocalDateTime> earliestOccurrenceByApplication(Long userId, String status,
-            LocalDateTime from, LocalDateTime to) {
-        List<ApplicationEvent> events = applicationEventRepository
-                .findByApplication_User_IdAndStatusInRange(userId, status, from, to);
-        Map<Long, LocalDateTime> earliest = new LinkedHashMap<>();
-        for (ApplicationEvent event : events) {
-            earliest.putIfAbsent(event.getApplication().getId(), event.getOccurredAt());
-        }
-        return earliest;
     }
 
     private TimelineEventDto toDto(ApplicationEvent event) {

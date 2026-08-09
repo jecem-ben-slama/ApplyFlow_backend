@@ -25,11 +25,9 @@ public class StatsPeriodSummaryDto {
     private Double interviewToOfferRate;
     private String periodLabel;
     public LocalDateTime minusDays(int i) {
-        // TODO Auto-generated method stub
         throw new UnsupportedOperationException("Unimplemented method 'minusDays'");
     }
     public LocalDateTime withHour(int i) {
-        // TODO Auto-generated method stub
         throw new UnsupportedOperationException("Unimplemented method 'withHour'");
     }
 }
