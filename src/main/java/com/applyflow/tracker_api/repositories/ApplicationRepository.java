@@ -65,6 +65,62 @@ public interface ApplicationRepository extends JpaRepository<Application, Long> 
         // Current-status count, for the active/stalled split.
         long countByUserIdAndStatusIn(Long userId, List<String> statuses);
 
+     @Query("""
+        SELECT a.id FROM Application a
+        WHERE a.user.id = :userId
+        AND (CAST(:from AS timestamp) IS NULL OR a.dateApplied >= :from)
+        AND (CAST(:to AS timestamp) IS NULL OR a.dateApplied <= :to)
+        AND (CAST(:jobTitle AS string) IS NULL OR a.jobTitle = :jobTitle)
+        AND (CAST(:template AS string) IS NULL OR a.template.name = :template)
+        AND (CAST(:cvVariant AS string) IS NULL OR a.cvVariant.name = :cvVariant)
+        AND (CAST(:status AS string) IS NULL OR a.status = :status)
+        """)
+        List<Long> findApplicationIdsByUserIdAndFilters(@Param("userId") Long userId,
+                        @Param("from") LocalDateTime from,
+                        @Param("to") LocalDateTime to,
+                        @Param("jobTitle") String jobTitle,
+                        @Param("template") String template,
+                        @Param("cvVariant") String cvVariant,
+                        @Param("status") String status);
+
+        @Query("""
+                        SELECT COUNT(a) FROM Application a
+                        WHERE a.user.id = :userId
+                        AND (CAST(:from AS timestamp) IS NULL OR a.dateApplied >= :from)
+                        AND (CAST(:to AS timestamp) IS NULL OR a.dateApplied <= :to)
+                        AND (CAST(:jobTitle AS string) IS NULL OR a.jobTitle = :jobTitle)
+                        AND (CAST(:template AS string) IS NULL OR a.template.name = :template)
+                        AND (CAST(:cvVariant AS string) IS NULL OR a.cvVariant.name = :cvVariant)
+                        AND (CAST(:status AS string) IS NULL OR a.status = :status)
+                        """)
+        long countByUserIdAndFilters(@Param("userId") Long userId,
+                        @Param("from") LocalDateTime from,
+                        @Param("to") LocalDateTime to,
+                        @Param("jobTitle") String jobTitle,
+                        @Param("template") String template,
+                        @Param("cvVariant") String cvVariant,
+                        @Param("status") String status);
+
+        @Query("""
+                        SELECT COUNT(a) FROM Application a
+                        WHERE a.user.id = :userId
+                        AND (CAST(:from AS timestamp) IS NULL OR a.dateApplied >= :from)
+                        AND (CAST(:to AS timestamp) IS NULL OR a.dateApplied <= :to)
+                        AND (CAST(:jobTitle AS string) IS NULL OR a.jobTitle = :jobTitle)
+                        AND (CAST(:template AS string) IS NULL OR a.template.name = :template)
+                        AND (CAST(:cvVariant AS string) IS NULL OR a.cvVariant.name = :cvVariant)
+                        AND (CAST(:status AS string) IS NULL OR a.status = :status)
+                        AND a.status IN :statuses
+                        """)
+        long countByUserIdAndStatusInFilters(@Param("userId") Long userId,
+                        @Param("statuses") List<String> statuses,
+                        @Param("from") LocalDateTime from,
+                        @Param("to") LocalDateTime to,
+                        @Param("jobTitle") String jobTitle,
+                        @Param("template") String template,
+                        @Param("cvVariant") String cvVariant,
+                        @Param("status") String status);
+
         // Lightweight list for the Kanban board and the timeline dropdown — no
         // pagination, no skills join, just enough to render a card.
         @Query("""

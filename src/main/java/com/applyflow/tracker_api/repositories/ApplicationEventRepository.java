@@ -62,4 +62,43 @@ public interface ApplicationEventRepository extends JpaRepository<ApplicationEve
                         @Param("status") String status,
                         @Param("from") LocalDateTime from,
                         @Param("to") LocalDateTime to);
+
+        // appIds is always non-null and non-empty here — callers in StatsService
+        // guard against null/empty applicationIds before invoking this method.
+        // (Previously used "(:appIds IS NULL OR ...)" which made Postgres unable to
+        // infer the parameter type for the IN-list, causing
+        // "could not determine data type of parameter" errors.)
+        @Query("""
+                        SELECT COUNT(DISTINCT e.application.id)
+                        FROM ApplicationEvent e
+                        WHERE e.application.user.id = :userId
+                        AND e.status = :status
+                        AND e.application.id IN :appIds
+                        AND (CAST(:from AS timestamp) IS NULL OR e.occurredAt >= :from)
+                        AND (CAST(:to AS timestamp) IS NULL OR e.occurredAt <= :to)
+                        """)
+        long countDistinctApplicationsByStatusAndApplicationIds(
+                        @Param("userId") Long userId,
+                        @Param("status") String status,
+                        @Param("appIds") List<Long> applicationIds,
+                        @Param("from") LocalDateTime from,
+                        @Param("to") LocalDateTime to);
+
+        // Same appIds guarantee as above — callers always pass a non-null,
+        // non-empty list.
+        @Query("""
+                        SELECT e FROM ApplicationEvent e
+                        WHERE e.application.user.id = :userId
+                        AND e.status = :status
+                        AND e.application.id IN :appIds
+                        AND (CAST(:from AS timestamp) IS NULL OR e.occurredAt >= :from)
+                        AND (CAST(:to AS timestamp) IS NULL OR e.occurredAt <= :to)
+                        ORDER BY e.occurredAt ASC
+                        """)
+        List<ApplicationEvent> findEarliestEventByApplicationIds(
+                        @Param("userId") Long userId,
+                        @Param("status") String status,
+                        @Param("appIds") List<Long> applicationIds,
+                        @Param("from") LocalDateTime from,
+                        @Param("to") LocalDateTime to);
 }
