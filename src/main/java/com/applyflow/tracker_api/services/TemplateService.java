@@ -1,5 +1,6 @@
 package com.applyflow.tracker_api.services;
 
+import com.applyflow.tracker_api.config.exceptions.ResourceNotFoundException;
 import com.applyflow.tracker_api.models.Template;
 import com.applyflow.tracker_api.repositories.TemplateRepository;
 import lombok.RequiredArgsConstructor;
@@ -15,7 +16,12 @@ public class TemplateService {
 
     private final TemplateRepository templateRepository;
 
+    @Transactional
     public Template createTemplate(Template template) {
+        Long userId = template.getUser().getId();
+        if (templateRepository.existsByUserIdAndName(userId, template.getName())) {
+            throw new IllegalArgumentException("A template with the name '" + template.getName() + "' already exists.");
+        }
         return templateRepository.save(template);
     }
 
@@ -38,12 +44,21 @@ public class TemplateService {
 
     public Template getTemplateByIdAndUser(Long id, Long userId) {
         return templateRepository.findByIdAndUserId(id, userId)
-                .orElseThrow(() -> new RuntimeException("Template not found or access denied."));
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Template not found or you don't have access to it."));
     }
 
     @Transactional
     public Template updateTemplate(Long id, Long userId, Template templateDetails) {
         Template existingTemplate = getTemplateByIdAndUser(id, userId);
+
+        // Check for name duplication if the name is being updated
+        if (!existingTemplate.getName().equals(templateDetails.getName())) {
+            if (templateRepository.existsByUserIdAndName(userId, templateDetails.getName())) {
+                throw new IllegalArgumentException(
+                        "A template with the name '" + templateDetails.getName() + "' already exists.");
+            }
+        }
 
         existingTemplate.setName(templateDetails.getName());
         existingTemplate.setLanguage(templateDetails.getLanguage());
