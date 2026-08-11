@@ -54,7 +54,6 @@ public class ApplicationService {
 
         String compiledSubject = template.getSubjectTemplate()
                 .replace("{{position}}", dto.getJobTitle())
-                .replace("{{role}}", dto.getJobTitle())
                 .replace("{{company}}", dto.getCompanyName());
 
         StringBuilder skillsBulletPoints = new StringBuilder();
@@ -77,7 +76,6 @@ public class ApplicationService {
 
         String compiledBody = bodyTemplate
                 .replace("{{position}}", dto.getJobTitle())
-                .replace("{{role}}", dto.getJobTitle())
                 .replace("{{company}}", dto.getCompanyName())
                 .replace("{{skills_block}}", skillsContent);
 
