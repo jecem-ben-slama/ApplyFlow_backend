@@ -59,7 +59,12 @@ public class Application {
     @JoinTable(name = "application_skills", joinColumns = @JoinColumn(name = "application_id"), inverseJoinColumns = @JoinColumn(name = "skill_id"))
     @Builder.Default
     private Set<Skill> skills = new HashSet<>();
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
+
+    @OneToMany(mappedBy = "application", cascade = CascadeType.ALL, orphanRemoval = true)
+    @Builder.Default
+    private Set<ApplicationEvent> events = new HashSet<>();
 }

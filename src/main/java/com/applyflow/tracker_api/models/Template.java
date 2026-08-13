@@ -5,7 +5,9 @@ import lombok.*;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "templates")
+@Table(name = "templates", uniqueConstraints = {
+        @UniqueConstraint(columnNames = { "user_id", "name" })
+})
 @Getter
 @Setter
 @NoArgsConstructor
@@ -22,7 +24,6 @@ public class Template {
 
     @Column(nullable = false, length = 10)
     private String language;
-
 
     @Column(name = "subject_template", nullable = false, columnDefinition = "TEXT")
     private String subjectTemplate;

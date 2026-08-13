@@ -11,18 +11,22 @@ import java.util.Optional;
 
 public interface CvVariantRepository extends JpaRepository<CvVariant, Long> {
 
-    Optional<CvVariant> findByIdAndUserId(Long id, Long userId);
+        Optional<CvVariant> findByIdAndUserId(Long id, Long userId);
 
-    @Query("""
-            SELECT c FROM CvVariant c
-            WHERE c.user.id = :userId
-              AND (:language IS NULL OR c.language = :language)
-              AND (:search IS NULL OR
-                   LOWER(c.name) LIKE LOWER(CONCAT('%', CAST(:search AS string), '%')))
-            """)
-    Page<CvVariant> findByUserIdWithFilters(
-            @Param("userId") Long userId,
-            @Param("language") String language,
-            @Param("search") String search,
-            Pageable pageable);
+        boolean existsByUserIdAndNameIgnoreCase(Long userId, String name);
+
+        boolean existsByUserIdAndNameIgnoreCaseAndIdNot(Long userId, String name, Long id);
+
+        @Query("""
+                        SELECT c FROM CvVariant c
+                        WHERE c.user.id = :userId
+                          AND (:language IS NULL OR c.language = :language)
+                          AND (:search IS NULL OR
+                               LOWER(c.name) LIKE LOWER(CONCAT('%', CAST(:search AS string), '%')))
+                        """)
+        Page<CvVariant> findByUserIdWithFilters(
+                        @Param("userId") Long userId,
+                        @Param("language") String language,
+                        @Param("search") String search,
+                        Pageable pageable);
 }

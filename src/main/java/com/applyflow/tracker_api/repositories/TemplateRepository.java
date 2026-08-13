@@ -13,6 +13,8 @@ import java.util.Optional;
 @Repository
 public interface TemplateRepository extends JpaRepository<Template, Long> {
 
+    boolean existsByUserIdAndName(Long userId, String name);
+
     Page<Template> findByUserIdAndLanguage(Long userId, String language, Pageable pageable);
 
     Page<Template> findByUserId(Long userId, Pageable pageable);

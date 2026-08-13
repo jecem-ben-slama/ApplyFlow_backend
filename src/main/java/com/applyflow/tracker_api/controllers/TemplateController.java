@@ -13,7 +13,10 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.Set;
 
 @RestController
 @RequestMapping("/api/templates")
@@ -23,8 +26,13 @@ public class TemplateController {
         private final TemplateService templateService;
         private final SecurityContextService securityContextService;
 
+        // Allowlist for sortBy — prevents PropertyReferenceException (500) on
+        // an invalid/unknown field name coming from the query string.
+        private static final Set<String> ALLOWED_SORT_FIELDS = Set.of(
+                        "id", "name", "language", "createdAt", "updatedAt");
+
         @PostMapping
-        public ResponseEntity<ApiResponse<TemplateDto>> createTemplate(@RequestBody TemplateDto dto) {
+        public ResponseEntity<ApiResponse<TemplateDto>> createTemplate(@Validated @RequestBody TemplateDto dto) {
                 Long userId = securityContextService.getCurrentUserId();
 
                 Template entity = Template.builder()
@@ -44,11 +52,16 @@ public class TemplateController {
         @GetMapping
         public ResponseEntity<ApiResponse<Page<TemplateDto>>> getAllTemplates(
                         @RequestParam(required = false) String language,
-                        @RequestParam(required = false) String search, // ← new
+                        @RequestParam(required = false) String search,
                         @RequestParam(defaultValue = "0") int page,
                         @RequestParam(defaultValue = "10") int size,
                         @RequestParam(defaultValue = "id") String sortBy,
                         @RequestParam(defaultValue = "asc") String direction) {
+
+                if (!ALLOWED_SORT_FIELDS.contains(sortBy)) {
+                        throw new IllegalArgumentException(
+                                        "Invalid sort field: '" + sortBy + "'. Allowed values: " + ALLOWED_SORT_FIELDS);
+                }
 
                 Long userId = securityContextService.getCurrentUserId();
 
@@ -80,10 +93,9 @@ public class TemplateController {
         public ResponseEntity<ApiResponse<TemplateDto>> getTemplateById(@PathVariable Long id) {
                 Long userId = securityContextService.getCurrentUserId();
 
+                // getTemplateByIdAndUser always returns a valid template or throws
+                // ResourceNotFoundException — no null-check needed here anymore.
                 Template template = templateService.getTemplateByIdAndUser(id, userId);
-                if (template == null) {
-                        throw new IllegalArgumentException("Template not found with ID: " + id);
-                }
 
                 return ResponseEntity
                                 .ok(ApiResponse.success("Template retrieved successfully", convertToDto(template)));
@@ -92,7 +104,7 @@ public class TemplateController {
         @PutMapping("/{id}")
         public ResponseEntity<ApiResponse<TemplateDto>> updateTemplate(
                         @PathVariable Long id,
-                        @RequestBody TemplateDto dto) {
+                        @Validated @RequestBody TemplateDto dto) {
 
                 Long userId = securityContextService.getCurrentUserId();
 

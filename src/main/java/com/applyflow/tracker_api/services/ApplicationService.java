@@ -54,7 +54,6 @@ public class ApplicationService {
 
         String compiledSubject = template.getSubjectTemplate()
                 .replace("{{position}}", dto.getJobTitle())
-                .replace("{{role}}", dto.getJobTitle())
                 .replace("{{company}}", dto.getCompanyName());
 
         StringBuilder skillsBulletPoints = new StringBuilder();
@@ -77,7 +76,6 @@ public class ApplicationService {
 
         String compiledBody = bodyTemplate
                 .replace("{{position}}", dto.getJobTitle())
-                .replace("{{role}}", dto.getJobTitle())
                 .replace("{{company}}", dto.getCompanyName())
                 .replace("{{skills_block}}", skillsContent);
 
@@ -145,11 +143,12 @@ public class ApplicationService {
             String normalized = status.toUpperCase();
             String oldStatus = existing.getStatus();
 
-            existing.setStatus(normalized);
-
-            if (!normalized.equals(oldStatus)) {
-                applicationEventService.recordEvent(existing, normalized, null);
+            if (!applicationEventService.shouldTransition(oldStatus, normalized)) {
+                throw new IllegalStateException("Invalid status transition from " + oldStatus + " to " + normalized);
             }
+
+            existing.setStatus(normalized);
+            applicationEventService.recordEvent(existing, normalized, null);
         }
 
         if (notes != null) {
