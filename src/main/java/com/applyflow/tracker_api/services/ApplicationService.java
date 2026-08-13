@@ -143,11 +143,12 @@ public class ApplicationService {
             String normalized = status.toUpperCase();
             String oldStatus = existing.getStatus();
 
-            existing.setStatus(normalized);
-
-            if (!normalized.equals(oldStatus)) {
-                applicationEventService.recordEvent(existing, normalized, null);
+            if (!applicationEventService.shouldTransition(oldStatus, normalized)) {
+                throw new IllegalStateException("Invalid status transition from " + oldStatus + " to " + normalized);
             }
+
+            existing.setStatus(normalized);
+            applicationEventService.recordEvent(existing, normalized, null);
         }
 
         if (notes != null) {

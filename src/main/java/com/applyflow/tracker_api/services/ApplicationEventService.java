@@ -8,12 +8,12 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Set;
 
 /**
  * Owns all writes to the application_events history table, plus the
- * forward-only ordering rule that stops system-triggered events (e.g. the
- * open-tracking pixel firing multiple times) from regressing a status that
- * has already moved further along the funnel.
+ * strict single-direction forward flow rule that prevents regressions
+ * and handles terminal states (REJECTED, GHOSTED, WITHDRAWN).
  */
 @Service
 @RequiredArgsConstructor
@@ -23,7 +23,10 @@ public class ApplicationEventService {
 
     private static final List<String> STATUS_ORDER = List.of(
             "COMPILED", "SENT", "VIEWED", "RESPONDED", "INTERVIEW_SCHEDULED",
-            "INTERVIEWING", "OFFER", "REJECTED", "GHOSTED", "WITHDRAWN");
+            "INTERVIEWING", "OFFER");
+
+    private static final Set<String> TERMINAL_STATES = Set.of(
+            "REJECTED", "GHOSTED", "WITHDRAWN");
 
     @Transactional
     public void recordEvent(Application application, String status, String note) {
@@ -36,16 +39,46 @@ public class ApplicationEventService {
     }
 
     /**
-     * True if moving from oldStatus to newStatus is a forward (or lateral-unknown)
-     * transition. Unknown/legacy status values are always allowed through, since
-     * we can't safely judge ordering against a value outside our known funnel.
+     * Enforces strict single-direction progression.
+     * - Terminal states can be reached from any active prior state, but once
+     * reached, no further progression is allowed.
+     * - Normal progression must follow the sequential order strictly without
+     * backward jumps.
      */
     public boolean shouldTransition(String oldStatus, String newStatus) {
-        int oldIdx = STATUS_ORDER.indexOf(oldStatus);
-        int newIdx = STATUS_ORDER.indexOf(newStatus);
-        if (oldIdx == -1) {
+        if (oldStatus == null) {
             return true;
         }
+
+        String normalizedOld = oldStatus.toUpperCase();
+        String normalizedNew = newStatus.toUpperCase();
+
+        if (normalizedOld.equals(normalizedNew)) {
+            return false;
+        }
+
+        // If current status is already terminal, no further transitions allowed
+        if (TERMINAL_STATES.contains(normalizedOld)) {
+            return false;
+        }
+
+        // If moving to a terminal state from a valid path, allow it
+        if (TERMINAL_STATES.contains(normalizedNew)) {
+            int oldIdx = STATUS_ORDER.indexOf(normalizedOld);
+            // Can terminalize from any recognized active step in the main pipeline
+            return oldIdx >= 0;
+        }
+
+        int oldIdx = STATUS_ORDER.indexOf(normalizedOld);
+        int newIdx = STATUS_ORDER.indexOf(normalizedNew);
+
+        // Unknown or legacy status values
+        if (oldIdx == -1 || newIdx == -1) {
+            return true;
+        }
+
+        // Strict single-direction forward flow: must step exactly forward or advance
+        // sequentially
         return newIdx > oldIdx;
     }
 
