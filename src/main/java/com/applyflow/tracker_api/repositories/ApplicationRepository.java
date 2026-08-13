@@ -47,16 +47,18 @@ public interface ApplicationRepository extends JpaRepository<Application, Long> 
                         @Param("status") String status,
                         Pageable pageable);
 
-        // Total application count for a user, for the stats summary (all-time).
-        long countByUserId(Long userId);
+        // Total application count for a user, for the stats summary (all-time),
+        // excluding 'compiled'
+        @Query("SELECT COUNT(a) FROM Application a WHERE a.user.id = :userId AND (a.status IS NULL OR LOWER(a.status) <> 'compiled')")
+        long countByUserId(@Param("userId") Long userId);
 
-        // Date-range aware total, keyed off dateApplied. from/to are always
-        // non-null effective bounds (resolved by the service via DateRangeUtils).
+        // Date-range aware total, keyed off dateApplied, excluding 'compiled'
         @Query("""
                         SELECT COUNT(a) FROM Application a
                         WHERE a.user.id = :userId
                         AND a.dateApplied >= :from
                         AND a.dateApplied <= :to
+                        AND (a.status IS NULL OR LOWER(a.status) <> 'compiled')
                         """)
         long countByUserIdInRange(@Param("userId") Long userId,
                         @Param("from") LocalDateTime from,
@@ -65,16 +67,29 @@ public interface ApplicationRepository extends JpaRepository<Application, Long> 
         // Current-status count, for the active/stalled split.
         long countByUserIdAndStatusIn(Long userId, List<String> statuses);
 
-     @Query("""
-        SELECT a.id FROM Application a
-        WHERE a.user.id = :userId
-        AND (CAST(:from AS timestamp) IS NULL OR a.dateApplied >= :from)
-        AND (CAST(:to AS timestamp) IS NULL OR a.dateApplied <= :to)
-        AND (CAST(:jobTitle AS string) IS NULL OR a.jobTitle = :jobTitle)
-        AND (CAST(:template AS string) IS NULL OR a.template.name = :template)
-        AND (CAST(:cvVariant AS string) IS NULL OR a.cvVariant.name = :cvVariant)
-        AND (CAST(:status AS string) IS NULL OR a.status = :status)
-        """)
+        // NOTE: template/cvVariant use EXPLICIT LEFT JOINs (not the a.template.name /
+        // a.cvVariant.name dot-path). Referencing an association via a dot-path in
+        // JPQL causes Hibernate to generate an IMPLICIT INNER JOIN to resolve it,
+        // regardless of the "IS NULL OR ..." guard around it — that inner join
+        // happens at the FROM-clause level before the WHERE clause is evaluated.
+        // That was silently excluding every Application with a null template or
+        // null cvVariant from all filtered queries, even when the filter param
+        // itself was null (i.e. "don't filter on this"). Using LEFT JOIN + the
+        // join alias keeps rows with no associated template/cvVariant in the
+        // result set.
+        @Query("""
+                        SELECT a.id FROM Application a
+                        LEFT JOIN a.template t
+                        LEFT JOIN a.cvVariant cv
+                        WHERE a.user.id = :userId
+                        AND (CAST(:from AS timestamp) IS NULL OR a.dateApplied >= :from)
+                        AND (CAST(:to AS timestamp) IS NULL OR a.dateApplied <= :to)
+                        AND (CAST(:jobTitle AS string) IS NULL OR a.jobTitle = :jobTitle)
+                        AND (CAST(:template AS string) IS NULL OR t.name = :template)
+                        AND (CAST(:cvVariant AS string) IS NULL OR cv.name = :cvVariant)
+                        AND (CAST(:status AS string) IS NULL OR a.status = :status)
+                        AND (a.status IS NULL OR LOWER(a.status) <> 'compiled')
+                        """)
         List<Long> findApplicationIdsByUserIdAndFilters(@Param("userId") Long userId,
                         @Param("from") LocalDateTime from,
                         @Param("to") LocalDateTime to,
@@ -85,13 +100,16 @@ public interface ApplicationRepository extends JpaRepository<Application, Long> 
 
         @Query("""
                         SELECT COUNT(a) FROM Application a
+                        LEFT JOIN a.template t
+                        LEFT JOIN a.cvVariant cv
                         WHERE a.user.id = :userId
                         AND (CAST(:from AS timestamp) IS NULL OR a.dateApplied >= :from)
                         AND (CAST(:to AS timestamp) IS NULL OR a.dateApplied <= :to)
                         AND (CAST(:jobTitle AS string) IS NULL OR a.jobTitle = :jobTitle)
-                        AND (CAST(:template AS string) IS NULL OR a.template.name = :template)
-                        AND (CAST(:cvVariant AS string) IS NULL OR a.cvVariant.name = :cvVariant)
+                        AND (CAST(:template AS string) IS NULL OR t.name = :template)
+                        AND (CAST(:cvVariant AS string) IS NULL OR cv.name = :cvVariant)
                         AND (CAST(:status AS string) IS NULL OR a.status = :status)
+                        AND (a.status IS NULL OR LOWER(a.status) <> 'compiled')
                         """)
         long countByUserIdAndFilters(@Param("userId") Long userId,
                         @Param("from") LocalDateTime from,
@@ -103,14 +121,17 @@ public interface ApplicationRepository extends JpaRepository<Application, Long> 
 
         @Query("""
                         SELECT COUNT(a) FROM Application a
+                        LEFT JOIN a.template t
+                        LEFT JOIN a.cvVariant cv
                         WHERE a.user.id = :userId
                         AND (CAST(:from AS timestamp) IS NULL OR a.dateApplied >= :from)
                         AND (CAST(:to AS timestamp) IS NULL OR a.dateApplied <= :to)
                         AND (CAST(:jobTitle AS string) IS NULL OR a.jobTitle = :jobTitle)
-                        AND (CAST(:template AS string) IS NULL OR a.template.name = :template)
-                        AND (CAST(:cvVariant AS string) IS NULL OR a.cvVariant.name = :cvVariant)
+                        AND (CAST(:template AS string) IS NULL OR t.name = :template)
+                        AND (CAST(:cvVariant AS string) IS NULL OR cv.name = :cvVariant)
                         AND (CAST(:status AS string) IS NULL OR a.status = :status)
                         AND a.status IN :statuses
+                        AND LOWER(a.status) <> 'compiled'
                         """)
         long countByUserIdAndStatusInFilters(@Param("userId") Long userId,
                         @Param("statuses") List<String> statuses,
@@ -125,7 +146,7 @@ public interface ApplicationRepository extends JpaRepository<Application, Long> 
         // pagination, no skills join, just enough to render a card.
         @Query("""
                         SELECT new com.applyflow.tracker_api.dtos.ApplicationSummaryDto(
-                                a.id, a.companyName, a.jobTitle, a.status)
+                            a.id, a.companyName, a.jobTitle, a.status)
                         FROM Application a
                         WHERE a.user.id = :userId
                         ORDER BY a.id DESC
