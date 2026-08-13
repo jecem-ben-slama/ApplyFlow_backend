@@ -43,7 +43,8 @@ public class ApplicationController {
             @RequestParam(defaultValue = "dateApplied") String sortBy,
             @RequestParam(defaultValue = "desc") String direction,
             @RequestParam(required = false) String status,
-            @RequestParam(required = false) String keyword) {
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String language) {
 
         Long userId = securityContextService.getCurrentUserId();
 
@@ -53,7 +54,7 @@ public class ApplicationController {
         Pageable pageable = PageRequest.of(page, size, sort);
 
         Page<ApplicationResponseDto> responseData = applicationService
-                .getAllApplicationsForUser(userId, status, keyword, pageable);
+                .getAllApplicationsForUser(userId, status, keyword, language, pageable);
 
         return ResponseEntity.ok(ApiResponse.success("User tracking history retrieved successfully", responseData));
     }

@@ -104,21 +104,14 @@ public class ApplicationService {
 
     @Transactional(readOnly = true)
     public Page<ApplicationResponseDto> getAllApplicationsForUser(
-            Long userId, String status, String keyword, Pageable pageable) {
+            Long userId, String status, String keyword, String language, Pageable pageable) {
 
-        boolean hasStatus = status != null && !status.isBlank();
-        boolean hasKeyword = keyword != null && !keyword.isBlank();
-        Page<Application> applicationsPage;
+        String statusParam = (status != null && !status.isBlank()) ? status : null;
+        String keywordParam = (keyword != null && !keyword.isBlank()) ? keyword : null;
+        String languageParam = (language != null && !language.isBlank()) ? language : null;
 
-        if (hasStatus && hasKeyword) {
-            applicationsPage = applicationRepository.searchByKeywordAndStatus(userId, keyword, status, pageable);
-        } else if (hasStatus) {
-            applicationsPage = applicationRepository.findByUserIdAndStatusIgnoreCase(userId, status, pageable);
-        } else if (hasKeyword) {
-            applicationsPage = applicationRepository.searchByKeyword(userId, keyword, pageable);
-        } else {
-            applicationsPage = applicationRepository.findByUserId(userId, pageable);
-        }
+        Page<Application> applicationsPage = applicationRepository.findByUserIdWithFilters(
+                userId, statusParam, keywordParam, languageParam, pageable);
 
         return applicationsPage.map(this::convertToDto);
     }
