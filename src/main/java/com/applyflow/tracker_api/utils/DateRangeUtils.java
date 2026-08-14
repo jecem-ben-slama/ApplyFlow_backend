@@ -1,4 +1,4 @@
-package com.applyflow.tracker_api.util;
+package com.applyflow.tracker_api.utils;
 
 import java.time.LocalDateTime;
 

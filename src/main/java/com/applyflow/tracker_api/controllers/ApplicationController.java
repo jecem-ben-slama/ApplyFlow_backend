@@ -5,7 +5,9 @@ import com.applyflow.tracker_api.dtos.ApiResponse;
 import com.applyflow.tracker_api.dtos.ApplicationCreateDto;
 import com.applyflow.tracker_api.dtos.ApplicationResponseDto;
 import com.applyflow.tracker_api.services.ApplicationService;
+import com.applyflow.tracker_api.utils.SortValidation;
 import lombok.RequiredArgsConstructor;
+import java.util.Set;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -36,29 +38,29 @@ public class ApplicationController {
                 HttpStatus.CREATED);
     }
 
-    @GetMapping
-    public ResponseEntity<ApiResponse<Page<ApplicationResponseDto>>> getAllApplications(
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "10") int size,
-            @RequestParam(defaultValue = "dateApplied") String sortBy,
-            @RequestParam(defaultValue = "desc") String direction,
-            @RequestParam(required = false) String status,
-            @RequestParam(required = false) String keyword,
-            @RequestParam(required = false) String language) {
+   private static final Set<String> ALLOWED_SORT_FIELDS =
+        Set.of("dateApplied", "companyName", "jobTitle", "status", "id");
 
-        Long userId = securityContextService.getCurrentUserId();
+@GetMapping
+public ResponseEntity<ApiResponse<Page<ApplicationResponseDto>>> getAllApplications(
+        @RequestParam(defaultValue = "0") int page,
+        @RequestParam(defaultValue = "10") int size,
+        @RequestParam(defaultValue = "dateApplied") String sortBy,
+        @RequestParam(defaultValue = "desc") String direction,
+        @RequestParam(required = false) String status,
+        @RequestParam(required = false) String keyword,
+        @RequestParam(required = false) String language) {
 
-        Sort sort = direction.equalsIgnoreCase("desc")
-                ? Sort.by(sortBy).descending()
-                : Sort.by(sortBy).ascending();
-        Pageable pageable = PageRequest.of(page, size, sort);
+    Long userId = securityContextService.getCurrentUserId();
 
-        Page<ApplicationResponseDto> responseData = applicationService
-                .getAllApplicationsForUser(userId, status, keyword, language, pageable);
+    Sort sort = SortValidation.resolve(sortBy, direction, ALLOWED_SORT_FIELDS);
+    Pageable pageable = PageRequest.of(page, size, sort);
 
-        return ResponseEntity.ok(ApiResponse.success("User tracking history retrieved successfully", responseData));
-    }
+    Page<ApplicationResponseDto> responseData = applicationService
+            .getAllApplicationsForUser(userId, status, keyword, language, pageable);
 
+    return ResponseEntity.ok(ApiResponse.success("User tracking history retrieved successfully", responseData));
+}
     @GetMapping("/{id}")
     public ResponseEntity<ApiResponse<ApplicationResponseDto>> getApplicationById(@PathVariable Long id) {
         Long userId = securityContextService.getCurrentUserId();
