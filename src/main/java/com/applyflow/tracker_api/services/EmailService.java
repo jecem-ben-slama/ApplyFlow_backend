@@ -1,7 +1,9 @@
 package com.applyflow.tracker_api.services;
 
+import com.applyflow.tracker_api.models.Application;
 import com.applyflow.tracker_api.models.ApplicationStatus;
 import com.applyflow.tracker_api.models.CvVariant;
+import com.applyflow.tracker_api.repositories.ApplicationRepository;
 import com.applyflow.tracker_api.repositories.CvVariantRepository;
 import com.applyflow.tracker_api.services.storage.CvStorageFactory;
 import com.applyflow.tracker_api.services.storage.CvStorageService;
@@ -33,6 +35,7 @@ public class EmailService {
 
     private final CvStorageFactory storageFactory;
     private final CvVariantRepository cvVariantRepository;
+    private final ApplicationRepository applicationRepository;
     private final ApplicationService applicationService;
     private final RestTemplate restTemplate = new RestTemplate();
 
@@ -45,7 +48,20 @@ public class EmailService {
             String body, Long cvVariantId, Long applicationId) {
 
         try {
-            // Build the MIME message exactly as before — no SMTP session needed anymore
+            // Guard check: Ensure application is in COMPILED state before allowing
+            // send/resend
+            if (applicationId != null) {
+                Application application = applicationRepository.findById(applicationId)
+                        .orElseThrow(() -> new RuntimeException("Application not found for ID: " + applicationId));
+
+                if (application.getStatus() != null && !application.getStatus().equalsIgnoreCase("COMPILED")) {
+                    throw new IllegalStateException(
+                            "Email cannot be sent because this application has already been processed (Current status: "
+                                    + application.getStatus() + ")");
+                }
+            }
+
+            // Build the MIME message
             Session session = Session.getDefaultInstance(new Properties());
             MimeMessage mimeMessage = new MimeMessage(session);
             MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, true, "UTF-8");
@@ -105,7 +121,6 @@ public class EmailService {
                     applicationService.recordSystemStatusEvent(
                             applicationId, ApplicationStatus.SENT, "Email dispatched via Gmail API");
                 } catch (Exception statusEx) {
-                    // never let a status-tracking failure roll back or mask a successful send
                     log.warn("Email sent successfully but failed to record SENT status for application {}: {}",
                             applicationId, statusEx.getMessage());
                 }
@@ -118,7 +133,6 @@ public class EmailService {
     }
 
     private String buildHtmlBodyWithTracking(String plainOrHtmlBody, Long applicationId) {
-        // Preserve line breaks if the incoming body is plain text
         String htmlSafeBody = plainOrHtmlBody.contains("<")
                 ? plainOrHtmlBody
                 : plainOrHtmlBody.replace("\n", "<br/>");

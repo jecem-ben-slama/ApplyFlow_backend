@@ -129,7 +129,10 @@ public class ApplicationPresetService {
                 .templateId(p.getTemplate() != null ? p.getTemplate().getId() : null)
                 .cvVariantId(p.getCvVariant() != null ? p.getCvVariant().getId() : null)
                 .skillIds(p.getSkills() != null
-                        ? p.getSkills().stream().map(Skill::getId).collect(Collectors.toSet())
+                        ? p.getSkills().stream()
+                                .filter(skill -> skill != null)
+                                .map(skill -> skill.getId())
+                                .collect(Collectors.toSet())
                         : Set.of())
                 .notes(p.getNotes())
                 .build();
