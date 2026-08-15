@@ -28,6 +28,8 @@ public class ApplicationPresetService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new RuntimeException("User not found: " + userId));
 
+        assertNameAvailable(dto.getName(), userId, null);
+
         Template template = templateRepository.findByIdAndUserId(dto.getTemplateId(), userId)
                 .orElseThrow(() -> new RuntimeException("Template not found or access denied"));
 
@@ -58,8 +60,10 @@ public class ApplicationPresetService {
         ApplicationPreset existing = presetRepository.findByIdAndUserId(id, userId)
                 .orElseThrow(() -> new RuntimeException("Preset not found or access denied"));
 
-        if (dto.getName() != null)
+        if (dto.getName() != null) {
+            assertNameAvailable(dto.getName(), userId, id);
             existing.setName(dto.getName());
+        }
         if (dto.getJobTitle() != null)
             existing.setJobTitle(dto.getJobTitle());
         if (dto.getLanguage() != null)
@@ -107,6 +111,26 @@ public class ApplicationPresetService {
         ApplicationPreset preset = presetRepository.findByIdAndUserId(id, userId)
                 .orElseThrow(() -> new RuntimeException("Preset not found or access denied"));
         presetRepository.delete(preset);
+    }
+
+    /**
+     * Fails fast with a field-specific message before the DB's unique
+     * constraint would reject the save. The constraint itself remains as a
+     * safety net for races between the check and the insert/update — it'll
+     * fall through to GlobalExceptionHandler's generic
+     * DataIntegrityViolationException → 409 in that rare case.
+     *
+     * @param excludingId pass the preset's own id on update (so it doesn't
+     *                    collide with itself), or null on create.
+     */
+    private void assertNameAvailable(String name, Long userId, Long excludingId) {
+        boolean taken = (excludingId == null)
+                ? presetRepository.existsByUserIdAndNameIgnoreCase(userId, name)
+                : presetRepository.existsByUserIdAndNameIgnoreCaseAndIdNot(userId, name, excludingId);
+
+        if (taken) {
+            throw new IllegalStateException("You already have a preset named \"" + name + "\".");
+        }
     }
 
     private Set<Skill> resolveSkills(Set<Long> skillIds, Long userId) {
