@@ -46,10 +46,12 @@ public class ApplicationService {
         }
 
         Set<Skill> selectedSkills = new HashSet<>();
-        for (Long skillId : dto.getSkillIds()) {
-            Skill skill = skillRepository.findByIdAndUserId(skillId, dto.getUserId())
-                    .orElseThrow(() -> new RuntimeException("Skill not found or access denied for id: " + skillId));
-            selectedSkills.add(skill);
+        if (dto.getSkillIds() != null) {
+            for (Long skillId : dto.getSkillIds()) {
+                Skill skill = skillRepository.findByIdAndUserId(skillId, dto.getUserId())
+                        .orElseThrow(() -> new RuntimeException("Skill not found or access denied for id: " + skillId));
+                selectedSkills.add(skill);
+            }
         }
 
         String compiledSubject = template.getSubjectTemplate()
@@ -58,13 +60,13 @@ public class ApplicationService {
 
         StringBuilder skillsBulletPoints = new StringBuilder();
         for (Skill skill : selectedSkills) {
-            skillsBulletPoints.append("• ").append(skill.getName()).append(" : ");
-            if ("fr".equalsIgnoreCase(dto.getLanguage())) {
-                skillsBulletPoints.append(skill.getSentenceFr());
-            } else {
-                skillsBulletPoints.append(skill.getSentenceEn());
+            String sentence = "fr".equalsIgnoreCase(dto.getLanguage())
+                    ? skill.getSentenceFr()
+                    : skill.getSentenceEn();
+
+            if (sentence != null && !sentence.isBlank()) {
+                skillsBulletPoints.append("• ").append(sentence.trim()).append("\n");
             }
-            skillsBulletPoints.append("\n");
         }
 
         String skillsContent = skillsBulletPoints.toString().trim();
