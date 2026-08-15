@@ -4,7 +4,8 @@ import com.applyflow.tracker_api.dtos.ApplicationSummaryDto;
 import com.applyflow.tracker_api.dtos.StatMetricDto;
 import com.applyflow.tracker_api.repositories.AnalyticsRepository;
 import com.applyflow.tracker_api.repositories.ApplicationRepository;
-import com.applyflow.tracker_api.util.DateRangeUtils;
+import com.applyflow.tracker_api.utils.DateRangeUtils;
+
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;

@@ -173,6 +173,7 @@ public class GlobalExceptionHandler {
 
         return new ResponseEntity<>(response, HttpStatus.INTERNAL_SERVER_ERROR);
     }
+    
 
     // ---------------------------------------------------------------------
     // Helpers
@@ -219,4 +220,5 @@ public class GlobalExceptionHandler {
         return rootMessage.contains("null value in column")
                 || rootMessage.contains("violates not-null constraint");
     }
+
 }

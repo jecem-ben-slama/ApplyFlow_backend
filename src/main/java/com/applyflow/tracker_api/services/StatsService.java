@@ -6,7 +6,8 @@ import com.applyflow.tracker_api.models.ApplicationEvent;
 import com.applyflow.tracker_api.models.ApplicationStatus;
 import com.applyflow.tracker_api.repositories.ApplicationEventRepository;
 import com.applyflow.tracker_api.repositories.ApplicationRepository;
-import com.applyflow.tracker_api.util.DateRangeUtils;
+import com.applyflow.tracker_api.utils.DateRangeUtils;
+
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
