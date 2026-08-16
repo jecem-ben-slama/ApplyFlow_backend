@@ -88,7 +88,7 @@ public class StatsService {
     @Transactional(readOnly = true)
     public List<TimelineEventDto> getApplicationTimeline(Long applicationId, Long userId) {
         Application app = applicationRepository.findByIdAndUserId(applicationId, userId)
-                .orElseThrow(() -> new RuntimeException("Application tracking record not found or access denied."));
+                .orElseThrow(() -> new RuntimeException("Application not found or access denied."));
 
         return applicationEventRepository.findByApplicationIdOrderByOccurredAtAsc(app.getId()).stream()
                 .map(this::toDto)

@@ -19,10 +19,9 @@ import java.util.NoSuchElementException;
 import java.util.stream.Collectors;
 
 @RestControllerAdvice
-@Slf4j // Injects logger for clean production log streams on Render
+@Slf4j 
 public class GlobalExceptionHandler {
 
-    // Postgres SQLState codes (ANSI SQL standard — stable across PG versions)
     private static final String PG_FOREIGN_KEY_VIOLATION = "23503";
     private static final String PG_UNIQUE_VIOLATION = "23505";
     private static final String PG_NOT_NULL_VIOLATION = "23502";

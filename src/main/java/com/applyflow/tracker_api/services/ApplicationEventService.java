@@ -10,11 +10,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 import java.util.Set;
 
-/**
- * Owns all writes to the application_events history table, plus the
- * strict single-direction forward flow rule that prevents regressions
- * and handles terminal states (REJECTED, GHOSTED, WITHDRAWN).
- */
 @Service
 @RequiredArgsConstructor
 public class ApplicationEventService {
@@ -38,13 +33,7 @@ public class ApplicationEventService {
                         .build());
     }
 
-    /**
-     * Enforces strict single-direction progression.
-     * - Terminal states can be reached from any active prior state, but once
-     * reached, no further progression is allowed.
-     * - Normal progression must follow the sequential order strictly without
-     * backward jumps.
-     */
+
     public boolean shouldTransition(String oldStatus, String newStatus) {
         if (oldStatus == null) {
             return true;

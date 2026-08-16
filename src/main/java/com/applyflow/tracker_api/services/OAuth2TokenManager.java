@@ -75,11 +75,9 @@ public class OAuth2TokenManager {
             user.setUpdatedAt(LocalDateTime.now());
             userRepository.save(user);
 
-            log.info("Successfully provisioned fresh Google access token matrix for user context.");
             return newAccessToken;
 
         } catch (Exception e) {
-            log.error("Google token validation engine rejection error encountered.", e);
 
             // The refresh token itself may have been revoked (user removed app
             // access, changed password, etc). Clear it so we fail fast and

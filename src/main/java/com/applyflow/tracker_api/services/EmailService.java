@@ -76,7 +76,7 @@ public class EmailService {
 
             if (cvVariantId != null) {
                 CvVariant variant = cvVariantRepository.findById(cvVariantId)
-                        .orElseThrow(() -> new RuntimeException("CV Variant not found for ID: " + cvVariantId));
+                        .orElseThrow(() -> new RuntimeException("CV not found for ID: " + cvVariantId));
 
                 String cvUrl = variant.getFileUrl();
 
@@ -94,7 +94,6 @@ public class EmailService {
                             : "CV_" + subject.replaceAll("\\s+", "_") + ".pdf";
 
                     helper.addAttachment(filename, new ByteArrayResource(fileBytes));
-                    log.info("Successfully attached CV from URL: {} for variant ID: {}", cvUrl, cvVariantId);
                 }
             }
 
@@ -119,16 +118,16 @@ public class EmailService {
             if (applicationId != null) {
                 try {
                     applicationService.recordSystemStatusEvent(
-                            applicationId, ApplicationStatus.SENT, "Email dispatched via Gmail API");
+                            applicationId, ApplicationStatus.SENT, "Email sent sucessfully ");
                 } catch (Exception statusEx) {
-                    log.warn("Email sent successfully but failed to record SENT status for application {}: {}",
+                    log.warn("Email sent successfully but failed to update status to sent for application {}: {}",
                             applicationId, statusEx.getMessage());
                 }
             }
 
         } catch (Exception e) {
             log.error("Gmail API outbound transmission failed.", e);
-            throw new RuntimeException("Failed to dispatch email via Gmail API: " + e.getMessage(), e);
+            throw new RuntimeException("Failed to send email via Gmail API: " + e.getMessage(), e);
         }
     }
 

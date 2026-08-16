@@ -6,7 +6,7 @@ import java.util.HashSet;
 import java.util.Set;
 
 @Entity
-@Table(name = "application_presets")
+@Table(name = "application_presets", uniqueConstraints = @UniqueConstraint(columnNames = { "user_id", "name" }))
 @Getter
 @Setter
 @NoArgsConstructor
