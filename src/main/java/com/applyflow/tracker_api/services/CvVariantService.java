@@ -23,8 +23,7 @@ public class CvVariantService {
 
         if (cvVariantRepository.existsByUserIdAndNameIgnoreCase(userId, cvVariant.getName())) {
             throw new IllegalStateException(
-                    "You already have a CV variant named \"" + cvVariant.getName() + "\". "
-                            + "Please choose a different name.");
+                    "You already have a CV named \"" + cvVariant.getName());
         }
 
         try {
@@ -32,9 +31,8 @@ public class CvVariantService {
         } catch (DataIntegrityViolationException ex) {
             // Safety net for a race condition between the check above and the save
             throw new IllegalStateException(
-                    "You already have a CV variant named \"" + cvVariant.getName() + "\". "
-                            + "Please choose a different name.");
-        }
+                    "You already have a CV named \"" + cvVariant.getName());
+    }
     }
 
     @Transactional(readOnly = true)
@@ -46,7 +44,7 @@ public class CvVariantService {
     public CvVariant getCvVariantByIdAndUser(Long id, Long userId) {
         return cvVariantRepository.findByIdAndUserId(id, userId)
                 .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.NOT_FOUND, "CV variant not found or access denied."));
+                        HttpStatus.NOT_FOUND, "CV not found or access denied."));
     }
 
     @Transactional
@@ -55,8 +53,7 @@ public class CvVariantService {
 
         if (cvVariantRepository.existsByUserIdAndNameIgnoreCaseAndIdNot(userId, details.getName(), id)) {
             throw new IllegalStateException(
-                    "You already have a CV variant named \"" + details.getName() + "\". "
-                            + "Please choose a different name.");
+                    "You already have a CV  named \"" + details.getName());
         }
 
         existing.setName(details.getName());
@@ -67,8 +64,8 @@ public class CvVariantService {
             return cvVariantRepository.save(existing);
         } catch (DataIntegrityViolationException ex) {
             throw new IllegalStateException(
-                    "You already have a CV variant named \"" + details.getName() + "\". "
-                            + "Please choose a different name.");
+                    "You already have a CV  named \"" + details.getName());
+
         }
     }
 

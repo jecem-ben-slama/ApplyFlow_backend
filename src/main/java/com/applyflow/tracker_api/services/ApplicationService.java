@@ -42,7 +42,7 @@ public class ApplicationService {
         if (dto.getCvVariantId() != null) {
             cvVariant = cvVariantRepository.findByIdAndUserId(dto.getCvVariantId(), dto.getUserId())
                     .orElseThrow(() -> new RuntimeException(
-                            "CV Variant not found or access denied for id: " + dto.getCvVariantId()));
+                            "CV not found or access denied for id: " + dto.getCvVariantId()));
         }
 
         Set<Skill> selectedSkills = new HashSet<>();
@@ -96,10 +96,9 @@ public class ApplicationService {
                 .notes(dto.getNotes())
                 .build();
 
-        log.info("Compiling fresh application tracking context for company: {}", application.getCompanyName());
 
         Application saved = applicationRepository.save(application);
-        applicationEventService.recordEvent(saved, ApplicationStatus.COMPILED.name(), "Application compiled");
+        applicationEventService.recordEvent(saved, ApplicationStatus.COMPILED.name(), "Application compiled successfully.");
 
         return convertToDto(saved);
     }
@@ -121,14 +120,14 @@ public class ApplicationService {
     @Transactional(readOnly = true)
     public ApplicationResponseDto getApplicationByIdAndUser(Long id, Long userId) {
         Application app = applicationRepository.findByIdAndUserId(id, userId)
-                .orElseThrow(() -> new RuntimeException("Application tracking record not found or access denied."));
+                .orElseThrow(() -> new RuntimeException("Application not found or access denied."));
         return convertToDto(app);
     }
 
     @Transactional
     public ApplicationResponseDto updateApplicationStatusOrNotes(Long id, Long userId, String status, String notes) {
         Application existing = applicationRepository.findByIdAndUserId(id, userId)
-                .orElseThrow(() -> new RuntimeException("Application tracking record not found or access denied."));
+                .orElseThrow(() -> new RuntimeException("Application not found or access denied."));
 
         if (status != null) {
             if (!ApplicationStatus.isValid(status)) {
@@ -179,7 +178,7 @@ public class ApplicationService {
     @Transactional
     public void deleteApplication(Long id, Long userId) {
         Application app = applicationRepository.findByIdAndUserId(id, userId)
-                .orElseThrow(() -> new RuntimeException("Application tracking record not found or access denied."));
+                .orElseThrow(() -> new RuntimeException("Application not found or access denied."));
         applicationRepository.delete(app);
     }
 

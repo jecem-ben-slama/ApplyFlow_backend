@@ -36,7 +36,7 @@ public class ApplicationPresetService {
         CvVariant cvVariant = null;
         if (dto.getCvVariantId() != null) {
             cvVariant = cvVariantRepository.findByIdAndUserId(dto.getCvVariantId(), userId)
-                    .orElseThrow(() -> new RuntimeException("CV Variant not found or access denied"));
+                    .orElseThrow(() -> new RuntimeException("CV not found or access denied"));
         }
 
         Set<Skill> skills = resolveSkills(dto.getSkillIds(), userId);
@@ -79,7 +79,7 @@ public class ApplicationPresetService {
 
         if (dto.getCvVariantId() != null) {
             CvVariant cvVariant = cvVariantRepository.findByIdAndUserId(dto.getCvVariantId(), userId)
-                    .orElseThrow(() -> new RuntimeException("CV Variant not found or access denied"));
+                    .orElseThrow(() -> new RuntimeException("CV not found or access denied"));
             existing.setCvVariant(cvVariant);
         }
 
