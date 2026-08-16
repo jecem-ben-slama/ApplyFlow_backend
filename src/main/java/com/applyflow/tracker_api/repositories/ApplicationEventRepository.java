@@ -29,10 +29,10 @@ public interface ApplicationEventRepository extends JpaRepository<ApplicationEve
                         """)
         List<ApplicationEvent> findRecentByUser(@Param("userId") Long userId, Pageable pageable);
 
-        // Distinct application count per status, for the funnel. from/to are always
-        // non-null effective bounds (resolved by the service via DateRangeUtils) —
-        // Postgres can't infer parameter types from an "IS NULL OR ..." pattern, so
-        // we never send a literal null here.
+        // Distinct application count per status, for the funnel (unfiltered case).
+        // from/to are always non-null effective bounds (resolved by the service via
+        // DateRangeUtils) — Postgres can't infer parameter types from an
+        // "IS NULL OR ..." pattern, so we never send a literal null here.
         @Query("""
                         SELECT e.status, COUNT(DISTINCT e.application.id)
                         FROM ApplicationEvent e
@@ -43,6 +43,25 @@ public interface ApplicationEventRepository extends JpaRepository<ApplicationEve
                         """)
         List<Object[]> countDistinctApplicationsByStatusForUser(
                         @Param("userId") Long userId,
+                        @Param("from") LocalDateTime from,
+                        @Param("to") LocalDateTime to);
+
+        // Filtered version of the funnel query, used when the caller supplied
+        // jobTitle/template/cvVariant/status filters. appIds is resolved by the
+        // service via ApplicationRepository.findApplicationIdsByUserIdAndFilters
+        // and is guaranteed non-empty before this is called.
+        @Query("""
+                        SELECT e.status, COUNT(DISTINCT e.application.id)
+                        FROM ApplicationEvent e
+                        WHERE e.application.user.id = :userId
+                        AND e.application.id IN :appIds
+                        AND e.occurredAt >= :from
+                        AND e.occurredAt <= :to
+                        GROUP BY e.status
+                        """)
+        List<Object[]> countDistinctApplicationsByStatusForUserAndApplicationIds(
+                        @Param("userId") Long userId,
+                        @Param("appIds") List<Long> applicationIds,
                         @Param("from") LocalDateTime from,
                         @Param("to") LocalDateTime to);
 
@@ -99,6 +118,36 @@ public interface ApplicationEventRepository extends JpaRepository<ApplicationEve
                         @Param("userId") Long userId,
                         @Param("status") String status,
                         @Param("appIds") List<Long> applicationIds,
+                        @Param("from") LocalDateTime from,
+                        @Param("to") LocalDateTime to);
+
+        // Batch fetch of full event history for a set of applications, grouped
+        // in-memory by application id by the caller. Replaces the per-application
+        // N+1 lookup that used to run inside getRejectionStageBreakdown's loop.
+        @Query("""
+                        SELECT e FROM ApplicationEvent e
+                        WHERE e.application.id IN :appIds
+                        ORDER BY e.application.id ASC, e.occurredAt ASC
+                        """)
+        List<ApplicationEvent> findByApplicationIdInOrderByApplicationIdAscOccurredAtAsc(
+                        @Param("appIds") List<Long> applicationIds);
+
+        // Batch fetch for trend charts: every SENT/RESPONDED/VIEWED/INTERVIEWING/
+        // OFFER event for a set of applications within [from, to], fetched once
+        // for the whole requested range. StatsService.getTrendData groups these
+        // by occurredAt.toLocalDate() + status in memory instead of calling
+        // countApplicationsThatReached once per status per day.
+        @Query("""
+                        SELECT e FROM ApplicationEvent e
+                        WHERE e.application.id IN :appIds
+                        AND e.status IN :statuses
+                        AND e.occurredAt >= :from
+                        AND e.occurredAt <= :to
+                        ORDER BY e.occurredAt ASC
+                        """)
+        List<ApplicationEvent> findByApplicationIdInAndStatusInAndOccurredAtBetween(
+                        @Param("appIds") List<Long> applicationIds,
+                        @Param("statuses") List<String> statuses,
                         @Param("from") LocalDateTime from,
                         @Param("to") LocalDateTime to);
 }
