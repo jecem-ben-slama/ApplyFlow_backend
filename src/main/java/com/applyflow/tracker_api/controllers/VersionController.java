@@ -9,8 +9,6 @@ import java.util.Map;
 @RestController
 public class VersionController {
 
-    // Hardcode/bump this manually each time you want to verify a deploy.
-    // Cheap, unambiguous, no DB or auth dependency.
     private static final String BUILD_TAG = "v2-gmail-api-2026-08-17";
 
     @GetMapping("/api/version")
