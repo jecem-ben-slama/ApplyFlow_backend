@@ -67,4 +67,8 @@ public class Application {
     @OneToMany(mappedBy = "application", cascade = CascadeType.ALL, orphanRemoval = true)
     @Builder.Default
     private Set<ApplicationEvent> events = new HashSet<>();
+
+    @OneToMany(mappedBy = "application", cascade = CascadeType.ALL, orphanRemoval = true)
+    @Builder.Default
+    private Set<ApplicationInteraction> interactions = new HashSet<>();
 }

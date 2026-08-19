@@ -1,20 +1,23 @@
 package com.applyflow.tracker_api.controllers;
 
 import com.applyflow.tracker_api.config.SecurityContextService;
+import com.applyflow.tracker_api.config.exceptions.ResourceNotFoundException;
+import com.applyflow.tracker_api.dtos.AccountDeletionRequestDto;
 import com.applyflow.tracker_api.dtos.ApiResponse;
 import com.applyflow.tracker_api.dtos.UserDto;
 import com.applyflow.tracker_api.models.User;
 import com.applyflow.tracker_api.repositories.UserRepository;
+import com.applyflow.tracker_api.services.AccountDeletionService;
 import com.applyflow.tracker_api.services.AuthService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.server.ResponseStatusException;
 
 @RestController
 @RequestMapping("/api/auth")
@@ -24,23 +27,26 @@ public class AuthController {
         private final UserRepository userRepository;
         private final SecurityContextService securityContextService;
         private final AuthService authService;
+        private final AccountDeletionService accountDeletionService;
 
         @GetMapping("/me")
-        public ApiResponse<UserDto> getCurrentUser() {
-                // 1. Resolve secure user context primary key
+        public ApiResponse<UserDto> getCurrentUser(HttpServletRequest request) {
                 Long userId = securityContextService.getCurrentUserId();
 
-                // 2. Load underlying core profile details
                 User user = userRepository.findById(userId)
-                                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                                                "User profile missing."));
+                                .orElseThrow(() -> new ResourceNotFoundException("User profile missing."));
 
-                // 3. Construct full name safely (combining first and last name)
                 String fullName = (user.getFirstName() != null && user.getLastName() != null)
                                 ? user.getFirstName() + " " + user.getLastName()
                                 : null;
 
-                // 4. Map directly into the updated immutable record layout
+                // One-time reactivation notice — read and clear so it never repeats.
+                Boolean reactivatedFlag = (Boolean) request.getSession().getAttribute("accountReactivated");
+                boolean reactivated = reactivatedFlag != null && reactivatedFlag;
+                if (reactivated) {
+                        request.getSession().removeAttribute("accountReactivated");
+                }
+
                 UserDto userDto = new UserDto(
                                 user.getId(),
                                 user.getEmail(),
@@ -50,9 +56,9 @@ public class AuthController {
                                 fullName,
                                 user.getPictureUrl(),
                                 user.getCreatedAt(),
-                                user.getUpdatedAt());
+                                user.getUpdatedAt(),
+                                reactivated);
 
-                // 5. Return clean data completely free of nested collections
                 return ApiResponse.<UserDto>builder()
                                 .success(true)
                                 .message("Session verified successfully.")
@@ -67,6 +73,28 @@ public class AuthController {
                 return ApiResponse.<Void>builder()
                                 .success(true)
                                 .message("Logged out successfully.")
+                                .build();
+        }
+
+        /**
+         * The client must send the exact phrase "delete {their email}"; the
+         * service independently verifies it against the account's real email
+         * before scheduling anything, since anyone could otherwise hit this
+         * endpoint directly and skip the frontend check entirely.
+         */
+        @DeleteMapping("/account")
+        public ApiResponse<Void> requestAccountDeletion(
+                        @RequestBody AccountDeletionRequestDto deletionRequest,
+                        HttpServletRequest request,
+                        HttpServletResponse response) {
+                Long userId = securityContextService.getCurrentUserId();
+
+                accountDeletionService.requestDeletion(userId, deletionRequest.getConfirmationPhrase());
+                authService.logout(request, response); // kill the session immediately
+
+                return ApiResponse.<Void>builder()
+                                .success(true)
+                                .message("Account scheduled for deletion. Log back in within 7 days to cancel.")
                                 .build();
         }
 }

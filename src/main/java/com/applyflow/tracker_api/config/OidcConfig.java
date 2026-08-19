@@ -2,6 +2,7 @@ package com.applyflow.tracker_api.config;
 
 import com.applyflow.tracker_api.models.User;
 import com.applyflow.tracker_api.repositories.UserRepository;
+import com.applyflow.tracker_api.services.AccountReactivationHelper;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.oauth2.client.oidc.userinfo.OidcUserRequest;
@@ -15,7 +16,8 @@ import java.time.LocalDateTime;
 public class OidcConfig {
 
     @Bean
-    public OidcUserService oidcUserService(UserRepository userRepository) {
+    public OidcUserService oidcUserService(UserRepository userRepository,
+            AccountReactivationHelper reactivationHelper) {
         return new OidcUserService() {
             @Override
             public OidcUser loadUser(OidcUserRequest userRequest) throws OAuth2AuthenticationException {
@@ -48,7 +50,10 @@ public class OidcConfig {
                                 .updatedAt(LocalDateTime.now())
                                 .build()));
 
-                // 3. Return your custom wrapper class containing the DB user ID!
+                // 3. Cancel any pending account deletion on successful login
+                reactivationHelper.reactivateIfPending(user);
+
+                // 4. Return your custom wrapper class containing the DB user ID!
                 return new CustomOidcUserWrapper(oidcUser, user.getId());
             }
         };

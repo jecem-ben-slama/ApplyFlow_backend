@@ -2,6 +2,7 @@ package com.applyflow.tracker_api.config;
 
 import com.applyflow.tracker_api.models.User;
 import com.applyflow.tracker_api.repositories.UserRepository;
+import com.applyflow.tracker_api.services.AccountReactivationHelper;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -29,6 +30,7 @@ public class OAuth2SuccessHandler implements AuthenticationSuccessHandler {
 
     private final UserRepository userRepository;
     private final OAuth2AuthorizedClientService authorizedClientService;
+    private final AccountReactivationHelper reactivationHelper;
 
     @Value("${app.frontend-url}")
     private String frontendUrl;
@@ -77,6 +79,12 @@ public class OAuth2SuccessHandler implements AuthenticationSuccessHandler {
                     .email(email)
                     .build();
         });
+
+        // Defensive/idempotent: OidcConfig or CustomOAuth2UserService will
+        // normally have already cleared this by the time we get here, so in
+        // practice this is a no-op — kept as a safety net in case this handler
+        // ever fires for a flow that bypasses those paths.
+        reactivationHelper.reactivateIfPending(user);
 
         // Plain values go in here — EncryptedStringConverter on the entity
         // handles encryption/decryption transparently via JPA.

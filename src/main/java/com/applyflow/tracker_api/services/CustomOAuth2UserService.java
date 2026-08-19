@@ -20,6 +20,7 @@ import java.time.LocalDateTime;
 public class CustomOAuth2UserService extends DefaultOAuth2UserService {
 
     private final UserRepository userRepository;
+    private final AccountReactivationHelper reactivationHelper;
     private final OidcUserService oidcUserService = new OidcUserService(); // Core delegate for OpenID connect
 
     // 1. Handles Standard OAuth2 Providers
@@ -62,6 +63,9 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
                         .createdAt(LocalDateTime.now())
                         .updatedAt(LocalDateTime.now())
                         .build()));
+
+        // Cancel any pending account deletion on successful login
+        reactivationHelper.reactivateIfPending(user);
 
         return new CustomOAuth2User(oAuth2User, user.getId());
     }
