@@ -1,5 +1,7 @@
 package com.applyflow.tracker_api.services;
 
+import com.applyflow.tracker_api.config.exceptions.GoogleReauthRequiredException;
+import com.applyflow.tracker_api.config.exceptions.GoogleTemporaryErrorException;
 import com.applyflow.tracker_api.models.User;
 import com.applyflow.tracker_api.repositories.UserRepository;
 import com.google.api.client.googleapis.auth.oauth2.GoogleRefreshTokenRequest;
@@ -38,15 +40,12 @@ public class OAuth2TokenManager {
      * refreshes it via the stored refresh token.
      */
     public String getValidAccessToken(User user) {
-        // If the token is missing a refresh token entirely, we can't refresh it
         if (user.getRefreshToken() == null || user.getRefreshToken().isBlank()) {
             log.error("Missing refresh token configuration context for user: {}", user.getEmail());
             throw new RuntimeException("No OAuth2 refresh token found for user: " + user.getEmail()
                     + ". Please sign out and log back in.");
         }
 
-        // Reuse the cached access token if it's still valid, avoiding an
-        // unnecessary round trip to Google on every call.
         if (isAccessTokenStillValid(user)) {
             log.debug("Reusing cached Google access token for: {}", user.getEmail());
             return user.getAccessToken();
@@ -55,8 +54,6 @@ public class OAuth2TokenManager {
         try {
             log.info("Executing background OAuth2 refresh token exchange handshake for: {}", user.getEmail());
 
-            // Build and execute the standard Google OAuth2 client credentials update
-            // request
             GoogleTokenResponse response = new GoogleRefreshTokenRequest(
                     new NetHttpTransport(),
                     new GsonFactory(),
@@ -66,7 +63,6 @@ public class OAuth2TokenManager {
 
             String newAccessToken = response.getAccessToken();
 
-            // Calculate and persist the new local expiry time window (usually 3600 seconds)
             Long expiresAtSeconds = response.getExpiresInSeconds();
             long safeBufferSeconds = (expiresAtSeconds != null) ? expiresAtSeconds : 3600L;
 
@@ -77,18 +73,26 @@ public class OAuth2TokenManager {
 
             return newAccessToken;
 
-        } catch (Exception e) {
+        } catch (com.google.api.client.auth.oauth2.TokenResponseException e) {
+            String errorCode = e.getDetails() != null ? e.getDetails().getError() : null;
 
-            // The refresh token itself may have been revoked (user removed app
-            // access, changed password, etc). Clear it so we fail fast and
-            // clearly next time instead of retrying a token that will never work.
-            user.setRefreshToken(null);
-            user.setAccessToken(null);
-            user.setTokenExpiry(null);
-            userRepository.save(user);
+            if ("invalid_grant".equals(errorCode)) {
+                log.warn("Refresh token invalidated by Google for {}: {}", user.getEmail(), errorCode);
+                user.setRefreshToken(null);
+                user.setAccessToken(null);
+                user.setTokenExpiry(null);
+                userRepository.save(user);
+                throw new GoogleReauthRequiredException(
+                        "Google access revoked for user " + user.getEmail() + ". Please reconnect your Google account.",
+                        e);
+            }
 
-            throw new RuntimeException("OAuth2 refresh token execution layer failed for user "
-                    + user.getEmail() + ". Please sign out and log back in.", e);
+            log.error("Transient error refreshing Google token for {}: {}", user.getEmail(), errorCode, e);
+            throw new GoogleTemporaryErrorException("Temporary error refreshing Google access. Try again shortly.", e);
+
+        } catch (java.io.IOException e) {
+            log.error("Network error refreshing Google token for {}", user.getEmail(), e);
+            throw new GoogleTemporaryErrorException("Network error refreshing Google access. Try again shortly.", e);
         }
     }
 

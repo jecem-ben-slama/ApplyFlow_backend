@@ -19,7 +19,7 @@ import java.util.NoSuchElementException;
 import java.util.stream.Collectors;
 
 @RestControllerAdvice
-@Slf4j 
+@Slf4j
 public class GlobalExceptionHandler {
 
     private static final String PG_FOREIGN_KEY_VIOLATION = "23503";
@@ -36,8 +36,6 @@ public class GlobalExceptionHandler {
     }
 
     // 1b. Catch business "valid request, wrong current state" rules
-    // (e.g. deleting something that's currently blocked by app-level logic,
-    // not just a raw DB constraint)
     @ExceptionHandler(IllegalStateException.class)
     public ResponseEntity<ApiResponse<Void>> handleIllegalStateException(IllegalStateException ex) {
         return new ResponseEntity<>(ApiResponse.error(ex.getMessage()), HttpStatus.CONFLICT);
@@ -50,16 +48,14 @@ public class GlobalExceptionHandler {
                 HttpStatus.NOT_FOUND);
     }
 
-    // 2b. Catch custom "not found" exceptions thrown deliberately from the
-    // service layer (preferred over NoSuchElementException/RuntimeException
-    // going forward — use this in new code)
+    // 2b. Catch custom "not found" exceptions thrown deliberately from the service
+    // layer
     @ExceptionHandler(ResourceNotFoundException.class)
     public ResponseEntity<ApiResponse<Void>> handleResourceNotFound(ResourceNotFoundException ex) {
         return new ResponseEntity<>(ApiResponse.error(ex.getMessage()), HttpStatus.NOT_FOUND);
     }
 
-    // 2c. Catch @Valid request body validation failures (missing/invalid
-    // fields caught at the DTO layer, before anything touches the DB)
+    // 2c. Catch @Valid request body validation failures
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ApiResponse<Void>> handleValidationErrors(MethodArgumentNotValidException ex) {
         String errors = ex.getBindingResult().getFieldErrors().stream()
@@ -68,10 +64,7 @@ public class GlobalExceptionHandler {
         return new ResponseEntity<>(ApiResponse.error(errors), HttpStatus.BAD_REQUEST);
     }
 
-    // 3. Catch database SQL state constraint failures (FK violations, unique
-    // violations, not-null violations, check violations, value-too-long).
-    // Uses Postgres SQLState codes as the primary signal, with
-    // message-keyword matching as a fallback if no SQLException is found.
+    // 3. Catch database SQL state constraint failures
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<ApiResponse<Void>> handleDatabaseConstraints(DataIntegrityViolationException ex) {
 
@@ -79,7 +72,6 @@ public class GlobalExceptionHandler {
         String rootMessage = getRootCauseMessage(ex);
         log.warn("DATA INTEGRITY VIOLATION - sqlState={}, message={}", sqlState, rootMessage);
 
-        // --- Primary check: Postgres SQLState code ---
         if (sqlState != null) {
             switch (sqlState) {
                 case PG_FOREIGN_KEY_VIOLATION:
@@ -97,12 +89,10 @@ public class GlobalExceptionHandler {
                     return badRequest(
                             "One of the submitted values is too long for its field. Please shorten it and try again.");
                 default:
-                    // Unrecognized SQLState — fall through to message-based fallback below
                     break;
             }
         }
 
-        // --- Fallback: keyword matching on the root cause message ---
         String lowerMessage = rootMessage.toLowerCase();
         if (isForeignKeyViolation(lowerMessage)) {
             return conflict("This item cannot be deleted because it is still linked to other records. "
@@ -115,7 +105,6 @@ public class GlobalExceptionHandler {
             return badRequest("A required field was missing when saving this record.");
         }
 
-        // Truly unrecognized constraint violation
         return conflict("Database constraint violation. Please check the submitted data and try again.");
     }
 
@@ -124,26 +113,24 @@ public class GlobalExceptionHandler {
         return ResponseEntity.notFound().build();
     }
 
-    // 4. Catch Network/Database Connection Drops explicitly (e.g., database
-    // pool exhausts or goes to sleep)
+    // 4. Catch Network/Database Connection Drops explicitly
     @ExceptionHandler({ DataAccessResourceFailureException.class, ConnectException.class })
     public ResponseEntity<ApiResponse<Void>> handleDatabaseConnectionErrors(Exception ex) {
         log.error("CRITICAL: Database connection failed or dropped! Context: ", ex);
         return new ResponseEntity<>(
                 ApiResponse
                         .error("The database service is temporarily unavailable. Please try again in a few moments."),
-                HttpStatus.SERVICE_UNAVAILABLE); // 503 Service Unavailable
+                HttpStatus.SERVICE_UNAVAILABLE);
     }
 
-    // 5. Catch Hibernate/Schema mapping errors (e.g., a table or column name
-    // doesn't exist)
+    // 5. Catch Hibernate/Schema mapping errors
     @ExceptionHandler(DataAccessException.class)
     public ResponseEntity<ApiResponse<Void>> handleGenericDatabaseErrors(DataAccessException ex) {
         log.error("DATABASE SCHEMA ERROR: Query execution or Hibernate structure matching failed: ", ex);
         return new ResponseEntity<>(
                 ApiResponse
                         .error("A data access error occurred while processing your request. Please contact support."),
-                HttpStatus.INTERNAL_SERVER_ERROR); // 500 Internal Server Error
+                HttpStatus.INTERNAL_SERVER_ERROR);
     }
 
     // 6. Catch your SecurityContextService 401 exceptions cleanly
@@ -156,6 +143,22 @@ public class GlobalExceptionHandler {
                 .build();
 
         return new ResponseEntity<>(response, ex.getStatusCode());
+    }
+
+    // 6b. Google access needs re-consent — app session stays valid, just needs
+    // reconnect
+    @ExceptionHandler(GoogleReauthRequiredException.class)
+    public ResponseEntity<ApiResponse<Void>> handleGoogleReauthRequired(GoogleReauthRequiredException ex) {
+        log.warn("Google reauth required: {}", ex.getMessage());
+        return new ResponseEntity<>(ApiResponse.error(ex.getMessage()), HttpStatus.CONFLICT); // 409
+    }
+
+    // 6c. Transient Google-side/network error — safe to retry, not an auth problem
+    // at all
+    @ExceptionHandler(GoogleTemporaryErrorException.class)
+    public ResponseEntity<ApiResponse<Void>> handleGoogleTemporaryError(GoogleTemporaryErrorException ex) {
+        log.error("Transient Google error: {}", ex.getMessage());
+        return new ResponseEntity<>(ApiResponse.error(ex.getMessage()), HttpStatus.SERVICE_UNAVAILABLE); // 503
     }
 
     // 7. The SINGLE unified catch-all fallback handler for general unexpected
@@ -172,7 +175,6 @@ public class GlobalExceptionHandler {
 
         return new ResponseEntity<>(response, HttpStatus.INTERNAL_SERVER_ERROR);
     }
-    
 
     // ---------------------------------------------------------------------
     // Helpers
@@ -219,5 +221,4 @@ public class GlobalExceptionHandler {
         return rootMessage.contains("null value in column")
                 || rootMessage.contains("violates not-null constraint");
     }
-
 }
