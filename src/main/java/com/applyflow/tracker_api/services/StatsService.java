@@ -29,20 +29,10 @@ public class StatsService {
                         "SENT", "VIEWED", "RESPONDED", "INTERVIEW_SCHEDULED", "INTERVIEWING");
         private static final List<String> TERMINAL_STATUSES = List.of(
                         "OFFER", "REJECTED", "GHOSTED", "WITHDRAWN");
-        private static final Set<String> ACTIVE_STATUS_SET = new HashSet<>(ACTIVE_STATUSES);
-        private static final Set<String> TERMINAL_STATUS_SET = new HashSet<>(TERMINAL_STATUSES);
-        private static final List<String> TREND_TRACKED_STATUSES = List.of(
-                        ApplicationStatus.SENT.name(), ApplicationStatus.RESPONDED.name(),
-                        ApplicationStatus.VIEWED.name(), ApplicationStatus.INTERVIEWING.name(),
-                        ApplicationStatus.OFFER.name());
-
+        private static final List<String> IGNORED_STATUSES = List.of("VIEWED");
         private final ApplicationRepository applicationRepository;
         private final ApplicationEventRepository applicationEventRepository;
 
-        @Transactional(readOnly = true)
-        public StatsSummaryDto getSummary(Long userId, LocalDateTime from, LocalDateTime to) {
-                return getSummary(userId, from, to, null, null, null, null);
-        }
 
         @Transactional(readOnly = true)
         public StatsSummaryDto getSummary(Long userId, LocalDateTime from, LocalDateTime to,
@@ -60,10 +50,7 @@ public class StatsService {
                 return StatsSummaryDto.fromPeriod(current, previous);
         }
 
-        @Transactional(readOnly = true)
-        public List<FunnelStageDto> getFunnel(Long userId, LocalDateTime from, LocalDateTime to) {
-                return getFunnel(userId, from, to, null, null, null, null);
-        }
+    
 
         @Transactional(readOnly = true)
         public List<FunnelStageDto> getFunnel(Long userId, LocalDateTime from, LocalDateTime to,
@@ -112,10 +99,6 @@ public class StatsService {
                                 .collect(Collectors.toList());
         }
 
-        @Transactional(readOnly = true)
-        public List<RejectionStageDto> getRejectionStageBreakdown(Long userId) {
-                return getRejectionStageBreakdown(userId, null, null, null, null, null, null);
-        }
 
         @Transactional(readOnly = true)
         public List<RejectionStageDto> getRejectionStageBreakdown(Long userId, LocalDateTime from, LocalDateTime to,
@@ -173,140 +156,9 @@ public class StatsService {
                                 RejectionStageDto.builder().stage("AFTER_INTERVIEW").count(afterInterview).build());
         }
 
-        // ---- Trend data --------------------------------------------------------
-        // Previously this called buildPeriodSummary (≈7 queries) once per day per
-        // bucket (current + previous), i.e. ~14 * N queries for an N-day range —
-        // 400+ round trips for a 30-day chart. It now fetches every application
-        // and every relevant event for the whole range in exactly 2 queries, then
-        // buckets everything by calendar day in memory.
 
-        @Transactional(readOnly = true)
-        public StatsTrendResponseDto getTrendData(Long userId, LocalDateTime from, LocalDateTime to,
-                        String granularity, String jobTitle, String template, String cvVariant, String status) {
-                LocalDateTime effFrom = DateRangeUtils.effectiveFrom(from);
-                LocalDateTime effTo = DateRangeUtils.effectiveTo(to);
-                List<LocalDate> dayPoints = buildDatePoints(effFrom, effTo, granularity);
-
-                // Extend the fetch window one day earlier than the visible range so the
-                // very first visible day still has a real "day before" to diff against —
-                // matches the original bucket-vs-bucket-minus-1-day comparison.
-                LocalDateTime fetchFrom = effFrom.toLocalDate().minusDays(1).atStartOfDay();
-                LocalDateTime fetchTo = effTo;
-
-                List<ApplicationBucketDto> buckets = applicationRepository.findApplicationBucketDataByUserIdAndFilters(
-                                userId, fetchFrom, fetchTo, jobTitle, template, cvVariant, status);
-
-                Map<LocalDate, List<ApplicationBucketDto>> bucketsByDay = buckets.stream()
-                                .filter(b -> b.getDateApplied() != null)
-                                .collect(Collectors.groupingBy(b -> b.getDateApplied().toLocalDate()));
-
-                List<Long> appIds = buckets.stream()
-                                .map(ApplicationBucketDto::getId)
-                                .distinct()
-                                .collect(Collectors.toList());
-
-                List<ApplicationEvent> events = appIds.isEmpty()
-                                ? List.of()
-                                : applicationEventRepository.findByApplicationIdInAndStatusInAndOccurredAtBetween(
-                                                appIds, TREND_TRACKED_STATUSES, fetchFrom, fetchTo);
-
-                // day -> status -> distinct application ids that reached that status that day
-                Map<LocalDate, Map<String, Set<Long>>> eventsByDayAndStatus = new HashMap<>();
-                for (ApplicationEvent event : events) {
-                        LocalDate day = event.getOccurredAt().toLocalDate();
-                        eventsByDayAndStatus
-                                        .computeIfAbsent(day, d -> new HashMap<>())
-                                        .computeIfAbsent(event.getStatus(), s -> new HashSet<>())
-                                        .add(event.getApplication().getId());
-                }
-
-                Set<LocalDate> daysToCompute = new HashSet<>(bucketsByDay.keySet());
-                daysToCompute.addAll(eventsByDayAndStatus.keySet());
-                Map<LocalDate, PeriodAgg> aggByDay = new HashMap<>();
-                for (LocalDate day : daysToCompute) {
-                        aggByDay.put(day, computeDayAgg(day, bucketsByDay, eventsByDayAndStatus));
-                }
-
-                List<TrendPointDto> applicationsOverTime = new ArrayList<>();
-                List<TrendPointDto> responseRateOverTime = new ArrayList<>();
-                List<TrendPointDto> interviewToOfferRateOverTime = new ArrayList<>();
-                List<TrendPointDto> rejectionTrendOverTime = new ArrayList<>();
-
-                PeriodAgg empty = new PeriodAgg();
-                for (LocalDate date : dayPoints) {
-                        PeriodAgg currentAgg = aggByDay.getOrDefault(date, empty);
-                        PeriodAgg previousAgg = aggByDay.getOrDefault(date.minusDays(1), empty);
-
-                        applicationsOverTime.add(TrendPointDto.builder().date(date).value(currentAgg.totalApplications)
-                                        .currentValue(currentAgg.totalApplications)
-                                        .previousValue(previousAgg.totalApplications).build());
-                        responseRateOverTime.add(TrendPointDto.builder().date(date).percent(currentAgg.responseRate())
-                                        .currentValue((long) currentAgg.responseRate())
-                                        .previousValue((long) previousAgg.responseRate()).build());
-                        interviewToOfferRateOverTime.add(TrendPointDto.builder().date(date)
-                                        .percent(currentAgg.interviewToOfferRate() == null ? 0.0
-                                                        : currentAgg.interviewToOfferRate())
-                                        .currentValue(currentAgg.offerCount).previousValue(previousAgg.offerCount)
-                                        .build());
-                        rejectionTrendOverTime.add(TrendPointDto.builder().date(date).value(currentAgg.terminalCount)
-                                        .currentValue(currentAgg.terminalCount).previousValue(previousAgg.terminalCount)
-                                        .build());
-                }
-
-                return StatsTrendResponseDto.builder()
-                                .granularity(granularity)
-                                .applicationsOverTime(applicationsOverTime)
-                                .responseRateOverTime(responseRateOverTime)
-                                .interviewToOfferRateOverTime(interviewToOfferRateOverTime)
-                                .rejectionTrendOverTime(rejectionTrendOverTime)
-                                .build();
-        }
-
-        private PeriodAgg computeDayAgg(LocalDate day, Map<LocalDate, List<ApplicationBucketDto>> bucketsByDay,
-                        Map<LocalDate, Map<String, Set<Long>>> eventsByDayAndStatus) {
-                PeriodAgg agg = new PeriodAgg();
-                List<ApplicationBucketDto> dayBuckets = bucketsByDay.getOrDefault(day, List.of());
-                agg.totalApplications = dayBuckets.size();
-                for (ApplicationBucketDto bucket : dayBuckets) {
-                        String currentStatus = bucket.getStatus();
-                        if (currentStatus != null && ACTIVE_STATUS_SET.contains(currentStatus)) {
-                                agg.activeCount++;
-                        }
-                        if (currentStatus != null && TERMINAL_STATUS_SET.contains(currentStatus)) {
-                                agg.terminalCount++;
-                        }
-                }
-
-                Map<String, Set<Long>> dayEvents = eventsByDayAndStatus.getOrDefault(day, Map.of());
-                agg.sentCount = dayEvents.getOrDefault(ApplicationStatus.SENT.name(), Set.of()).size();
-                agg.respondedCount = dayEvents.getOrDefault(ApplicationStatus.RESPONDED.name(), Set.of()).size();
-                agg.viewedCount = dayEvents.getOrDefault(ApplicationStatus.VIEWED.name(), Set.of()).size();
-                agg.interviewedCount = dayEvents.getOrDefault(ApplicationStatus.INTERVIEWING.name(), Set.of()).size();
-                agg.offerCount = dayEvents.getOrDefault(ApplicationStatus.OFFER.name(), Set.of()).size();
-
-                return agg;
-        }
-
-        // Per-day aggregate used only inside getTrendData's in-memory bucketing.
-        private static class PeriodAgg {
-                long totalApplications;
-                long sentCount;
-                long respondedCount;
-                long viewedCount;
-                long interviewedCount;
-                long offerCount;
-                long activeCount;
-                long terminalCount;
-
-                double responseRate() {
-                        return sentCount == 0 ? 0.0 : (double) respondedCount / sentCount;
-                }
-
-                Double interviewToOfferRate() {
-                        return interviewedCount == 0 ? null : (double) offerCount / interviewedCount;
-                }
-        }
-
+     
+   
         // ---- Summary (unchanged path — single current + single previous call) --
 
         private StatsPeriodSummaryDto buildPeriodSummary(Long userId, LocalDateTime from, LocalDateTime to,
@@ -335,9 +187,13 @@ public class StatsService {
                 long terminalCount = applicationRepository.countByUserIdAndStatusInFilters(userId, TERMINAL_STATUSES,
                                 effFrom,
                                 effTo, jobTitle, template, cvVariant, status);
+                long ignoredCount = applicationRepository.countByUserIdAndStatusInFilters(userId, IGNORED_STATUSES,
+                                effFrom,
+                                effTo, jobTitle, template, cvVariant, status);
                 long neverViewedCount = Math.max(sentCount - viewedCount, 0);
                 double responseRate = sentCount == 0 ? 0.0 : (double) respondedCount / sentCount;
                 double neverViewedRate = sentCount == 0 ? 0.0 : (double) neverViewedCount / sentCount;
+                double ignoredRate = viewedCount == 0 ? 0.0 : (double) ignoredCount / viewedCount;
                 Double interviewToOfferRate = interviewedCount == 0 ? null : (double) offerCount / interviewedCount;
                 Double avgResponseDays = computeAvgResponseDays(userId, effFrom, effTo, applicationIds, jobTitle,
                                 template,
@@ -346,12 +202,16 @@ public class StatsService {
                 return StatsPeriodSummaryDto.builder()
                                 .totalApplications(total)
                                 .sentCount(sentCount)
+                                .respondedCount(respondedCount)
+                                .viewedCount(viewedCount)
                                 .responseRate(responseRate)
                                 .avgResponseDays(avgResponseDays)
                                 .activeCount(activeCount)
                                 .terminalCount(terminalCount)
                                 .neverViewedCount(neverViewedCount)
                                 .neverViewedRate(neverViewedRate)
+                                .ignoredCount(ignoredCount)
+                                .ignoredRate(ignoredRate)
                                 .interviewedCount(interviewedCount)
                                 .offerCount(offerCount)
                                 .interviewToOfferRate(interviewToOfferRate)
@@ -402,12 +262,7 @@ public class StatsService {
                                 .orElse(0.0);
         }
 
-        // NOTE: takes the RAW (possibly null) from/to, not the effective (defaulted)
-        // bounds. If the caller didn't supply an explicit range — i.e. this is an
-        // "all time" request — there is no meaningful "previous period" to compute,
-        // so we just reuse the same all-time bounds. Previously this received the
-        // already-defaulted 1970–9999 range and tried to shift it further into the
-        // past, producing a multi-thousand-year-BC timestamp that Postgres rejected.
+        
         private LocalDateTime previousPeriodFrom(LocalDateTime from, LocalDateTime to) {
                 if (from == null || to == null) {
                         return DateRangeUtils.effectiveFrom(null);
@@ -416,12 +271,12 @@ public class StatsService {
                 return from.minusDays(days);
         }
 
+      
         private LocalDateTime previousPeriodTo(LocalDateTime from, LocalDateTime to) {
                 if (from == null || to == null) {
                         return DateRangeUtils.effectiveTo(null);
                 }
-                long days = ChronoUnit.DAYS.between(from.toLocalDate(), to.toLocalDate()) + 1;
-                return from.minusNanos(1_000_000L).minusDays(days - 1);
+                return from.minusNanos(1_000_000L);
         }
 
         private List<LocalDate> buildDatePoints(LocalDateTime from, LocalDateTime to, String granularity) {

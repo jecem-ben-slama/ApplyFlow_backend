@@ -1,0 +1,64 @@
+# --- STAGE 1: Build the Spring Boot Application ---
+FROM maven:3.9-eclipse-temurin-21-alpine AS build
+WORKDIR /app
+COPY pom.xml .
+RUN mvn dependency:go-offline -B
+COPY src ./src
+RUN mvn clean package -DskipTests -B
+
+# --- STAGE 2: Extract modules and build a custom minimal JRE ---
+FROM eclipse-temurin:21-alpine AS jre-builder
+WORKDIR /app
+# Copy the built jar from stage 1
+COPY --from=build /app/target/*.jar app.jar
+# Extract the dependencies to calculate exact required Java modules
+RUN mkdir /deps && cd /deps && jar -xf /app.jar BOOT-INF/lib/*
+# Automatically detect required standard Java modules using jdeps
+RUN jdeps \
+    --ignore-missing-deps \
+    --print-module-deps \
+    --multi-release 21 \
+    --class-path "/deps/BOOT-INF/lib/*" \
+    /app.jar > /modules.txt
+# Use jlink to build a stripped-down custom JRE containing ONLY what your app uses
+RUN jlink \
+    --add-modules $(cat /modules.txt),java.logging,java.naming,java.management,java.instrument,jdk.crypto.ec \
+    --compress 2 \
+    --no-header-files \
+    --no-man-pages \
+    --strip-debug \
+    --output /custom-jre
+
+# --- STAGE 3: Final Lightweight Runtime Image ---
+FROM alpine:3.20
+WORKDIR /app
+
+# Runtime deps jlink strips out by default: certs for TLS, tzdata for time zones
+RUN apk add --no-cache ca-certificates tzdata
+
+# Copy the custom minimal JRE from the previous stage
+ENV JAVA_HOME=/opt/jre
+ENV PATH="$JAVA_HOME/bin:$PATH"
+
+# Security best practice: create a non-root user
+RUN addgroup -S spring && adduser -S spring -G spring
+
+# --chown so files are actually owned by the non-root user, not root
+COPY --from=jre-builder --chown=spring:spring /custom-jre $JAVA_HOME
+COPY --from=build --chown=spring:spring /app/target/*.jar app.jar
+
+USER spring:spring
+
+# Vercel passes PORT dynamically; fallback to 8080 for local runs
+ENV PORT=8080
+EXPOSE 8080
+
+# Optional but cheap — helps local debugging (requires Spring Actuator);
+# remove if you don't have /actuator/health exposed
+HEALTHCHECK --interval=30s --timeout=3s --start-period=15s \
+  CMD wget -qO- "http://localhost:${PORT}/actuator/health" || exit 1
+
+# IMPORTANT: shell form (via sh -c) so ${PORT} actually gets expanded.
+# The old JSON-array ENTRYPOINT never substituted ${PORT} — it passed the
+# literal string "-Dserver.port=${PORT}" to Java.
+ENTRYPOINT ["sh", "-c", "java -XX:MaxRAMPercentage=75.0 -Dserver.port=${PORT:-8080} -jar app.jar"]
