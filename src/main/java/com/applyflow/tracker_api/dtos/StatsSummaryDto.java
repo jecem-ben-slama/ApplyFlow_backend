@@ -12,6 +12,8 @@ import lombok.NoArgsConstructor;
 public class StatsSummaryDto {
     private long totalApplications;
     private long sentCount;
+    private long respondedCount;
+    private long viewedCount;
     private double responseRate;
     private Double avgResponseDays;
 
@@ -22,6 +24,10 @@ public class StatsSummaryDto {
     // never-viewed
     private long neverViewedCount;
     private double neverViewedRate;
+
+    // ignored: viewed, then nothing (see StatsPeriodSummaryDto for the definition)
+    private long ignoredCount;
+    private double ignoredRate;
 
     // interview -> offer, separate from overall response rate
     private long interviewedCount;
@@ -35,12 +41,16 @@ public class StatsSummaryDto {
         return StatsSummaryDto.builder()
                 .totalApplications(current != null ? current.getTotalApplications() : 0)
                 .sentCount(current != null ? current.getSentCount() : 0)
+                .respondedCount(current != null ? current.getRespondedCount() : 0)
+                .viewedCount(current != null ? current.getViewedCount() : 0)
                 .responseRate(current != null ? current.getResponseRate() : 0.0)
                 .avgResponseDays(current != null ? current.getAvgResponseDays() : null)
                 .activeCount(current != null ? current.getActiveCount() : 0)
                 .terminalCount(current != null ? current.getTerminalCount() : 0)
                 .neverViewedCount(current != null ? current.getNeverViewedCount() : 0)
                 .neverViewedRate(current != null ? current.getNeverViewedRate() : 0.0)
+                .ignoredCount(current != null ? current.getIgnoredCount() : 0)
+                .ignoredRate(current != null ? current.getIgnoredRate() : 0.0)
                 .interviewedCount(current != null ? current.getInterviewedCount() : 0)
                 .offerCount(current != null ? current.getOfferCount() : 0)
                 .interviewToOfferRate(current != null ? current.getInterviewToOfferRate() : null)

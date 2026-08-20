@@ -82,28 +82,7 @@ public class StatsController {
         return ResponseEntity.ok(ApiResponse.success("Rejection stage breakdown retrieved successfully", response));
     }
 
-    @GetMapping("/trends")
-    public ResponseEntity<ApiResponse<StatsTrendResponseDto>> getTrends(
-            @RequestParam(required = false) Long userId,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
-            @RequestParam(required = false, defaultValue = "DAY") String granularity,
-            @RequestParam(required = false) String jobTitle,
-            @RequestParam(required = false) String template,
-            @RequestParam(required = false) String cvVariant,
-            @RequestParam(required = false) String status) {
-        Long currentUserId = securityContextService.getCurrentUserId();
-        if (userId != null && !userId.equals(currentUserId)) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Access denied for the requested user.");
-        }
-        LocalDateTime fromDt = toStartOfDay(from);
-        LocalDateTime toDt = toEndOfDay(to);
-        StatsTrendResponseDto response = statsService.getTrendData(currentUserId, fromDt, toDt, granularity, jobTitle,
-                template, cvVariant, status);
-        return ResponseEntity.ok(ApiResponse.success("Trend data retrieved successfully", response));
-    }
-
-    @GetMapping("/{id}/timeline")
+     @GetMapping("/{id}/timeline")
     public ResponseEntity<ApiResponse<List<TimelineEventDto>>> getApplicationTimeline(@PathVariable Long id) {
         Long userId = securityContextService.getCurrentUserId();
         List<TimelineEventDto> response = statsService.getApplicationTimeline(id, userId);

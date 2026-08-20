@@ -12,6 +12,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.HashSet;
+import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.Collections;
@@ -96,9 +97,9 @@ public class ApplicationService {
                 .notes(dto.getNotes())
                 .build();
 
-
         Application saved = applicationRepository.save(application);
-        applicationEventService.recordEvent(saved, ApplicationStatus.COMPILED.name(), "Application compiled successfully.");
+        applicationEventService.recordEvent(saved, ApplicationStatus.COMPILED.name(),
+                "Application compiled successfully.");
 
         return convertToDto(saved);
     }
@@ -141,6 +142,13 @@ public class ApplicationService {
                 throw new IllegalStateException("Invalid status transition from " + oldStatus + " to " + normalized);
             }
 
+            // Backfill any main-path stages that were skipped, so funnel and
+            // time-in-stage metrics don't have holes.
+            for (ApplicationStatus skipped : computeSkippedStatuses(oldStatus, normalized)) {
+                applicationEventService.recordEvent(existing, skipped.name(),
+                        "Auto-inserted: status jumped from " + oldStatus + " to " + normalized + ".");
+            }
+
             existing.setStatus(normalized);
             applicationEventService.recordEvent(existing, normalized, null);
         }
@@ -156,9 +164,6 @@ public class ApplicationService {
     /**
      * For system-triggered status transitions (email send confirmation,
      * open-tracking pixel) that have no authenticated user on the request.
-     * Delegates the forward-only ordering check to ApplicationEventService so
-     * a stale event (e.g. a re-opened email) can't regress a status that has
-     * already moved further along the funnel.
      */
     @Transactional
     public void recordSystemStatusEvent(Long applicationId, ApplicationStatus status, String note) {
@@ -169,6 +174,11 @@ public class ApplicationService {
         String oldStatus = app.getStatus();
 
         if (applicationEventService.shouldTransition(oldStatus, normalized)) {
+            for (ApplicationStatus skipped : computeSkippedStatuses(oldStatus, normalized)) {
+                applicationEventService.recordEvent(app, skipped.name(),
+                        "Auto-inserted: status jumped from " + oldStatus + " to " + normalized + ".");
+            }
+
             app.setStatus(normalized);
             applicationRepository.save(app);
             applicationEventService.recordEvent(app, normalized, note);
@@ -180,6 +190,53 @@ public class ApplicationService {
         Application app = applicationRepository.findByIdAndUserId(id, userId)
                 .orElseThrow(() -> new RuntimeException("Application not found or access denied."));
         applicationRepository.delete(app);
+    }
+
+    /**
+     * Returns progression statuses skipped between oldStatus and newStatus, in
+     * order.
+     * Maps REJECTED to include main-path steps up to RESPONDED when jumping from
+     * SENT.
+     */
+    private List<ApplicationStatus> computeSkippedStatuses(String oldStatus, String newStatus) {
+        List<ApplicationStatus> order = ApplicationStatus.PROGRESSION_ORDER;
+
+        ApplicationStatus oldAppStatus;
+        try {
+            oldAppStatus = ApplicationStatus.valueOf(oldStatus);
+        } catch (IllegalArgumentException e) {
+            return Collections.emptyList();
+        }
+
+        int oldIdx = order.indexOf(oldAppStatus);
+        int newIdx = -1;
+
+        try {
+            ApplicationStatus newAppStatus = ApplicationStatus.valueOf(newStatus);
+            newIdx = order.indexOf(newAppStatus);
+        } catch (IllegalArgumentException e) {
+            newIdx = -1;
+        }
+
+        // If transitioning to REJECTED (which is a branch state not in
+        // PROGRESSION_ORDER),
+        // map its target threshold to the index right after RESPONDED so SEEN and
+        // RESPONDED get backfilled.
+        if (newIdx == -1 && "REJECTED".equalsIgnoreCase(newStatus)) {
+            for (int i = 0; i < order.size(); i++) {
+                if ("RESPONDED".equalsIgnoreCase(order.get(i).name())) {
+                    newIdx = i + 1; // SubList is exclusive on end index, targeting index after RESPONDED includes
+                                    // RESPONDED
+                    break;
+                }
+            }
+        }
+
+        if (oldIdx == -1 || newIdx == -1 || newIdx <= oldIdx + 1) {
+            return Collections.emptyList();
+        }
+
+        return order.subList(oldIdx + 1, newIdx);
     }
 
     private ApplicationResponseDto convertToDto(Application app) {
