@@ -11,12 +11,15 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestTemplate;
-import org.springframework.web.util.UriComponentsBuilder;
 
-import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Service
 @RequiredArgsConstructor
@@ -25,31 +28,32 @@ public class GoogleDriveStorageService implements CvStorageService {
 
     private static final String ACCEPTED_MIME_TYPE = "application/pdf";
 
+    // Only the standard public "Share > Copy link" format is accepted:
+    // https://drive.google.com/file/d/{fileId}/view?usp=sharing (query string
+    // optional)
+    private static final Pattern PUBLIC_SHARE_LINK_PATTERN = Pattern
+            .compile("^https://drive\\.google\\.com/file/d/([a-zA-Z0-9_-]+)/view(?:\\?.*)?$");
+
     private final RestTemplate restTemplate = new RestTemplate();
     private final SecurityContextService securityContextService;
     private final UserRepository userRepository;
     private final OAuth2TokenManager tokenManager;
 
     @Override
+    public void validateFile(String fileUrl) {
+        // Runs the same link-format, access, and type checks as downloadFile,
+        // minus the actual byte download. Throws IllegalArgumentException
+        // with a specific, user-facing reason on any problem.
+        resolveAndValidateMetadata(fileUrl);
+    }
+
+    @Override
     public byte[] downloadFile(String fileUrl) {
 
-        String fileId = extractFileIdFromUrl(fileUrl);
+        String fileId = resolveAndValidateMetadata(fileUrl);
         String accessToken = getFreshTokenForCurrentUser();
 
-        // 1. Validate the file is actually a PDF before pulling bytes
-        DriveFileMetadata metadata = getFileMetadata(fileId, accessToken);
-        if (metadata == null || metadata.getMimeType() == null) {
-            throw new IllegalArgumentException("Unable to determine file type for Drive file: " + fileId);
-        }
-        if (!ACCEPTED_MIME_TYPE.equals(metadata.getMimeType())) {
-            log.warn("Rejected non-PDF Drive file. fileId={}, name={}, mimeType={}",
-                    fileId, metadata.getName(), metadata.getMimeType());
-            throw new IllegalArgumentException(
-                    "Only PDF files are supported. Found: " + metadata.getMimeType()
-                            + (metadata.getName() != null ? " (" + metadata.getName() + ")" : ""));
-        }
-
-        // 2. Download the actual bytes
+        // Download the actual bytes
         String downloadUrl = "https://www.googleapis.com/drive/v3/files/" + fileId + "?alt=media";
 
         HttpHeaders headers = new HttpHeaders();
@@ -63,6 +67,13 @@ public class GoogleDriveStorageService implements CvStorageService {
                     entity,
                     byte[].class);
             return response.getBody();
+        } catch (HttpClientErrorException e) {
+            if (isPermissionOrNotFoundError(e.getStatusCode())) {
+                log.warn("Access denied downloading Drive file bytes. fileId={}, status={}", fileId, e.getStatusCode());
+                throw notAccessibleException();
+            }
+            log.error("Failed to download byte stream from Google Drive for File ID: {}", fileId, e);
+            throw new RuntimeException("Google Drive CV download failed: " + e.getMessage(), e);
         } catch (Exception e) {
             log.error("Failed to download byte stream from Google Drive for File ID: {}", fileId, e);
             throw new RuntimeException("Google Drive CV download failed: " + e.getMessage(), e);
@@ -75,44 +86,53 @@ public class GoogleDriveStorageService implements CvStorageService {
     }
 
     /**
-     * Handles the common Drive URL shapes:
-     * https://drive.google.com/file/d/{id}/view?usp=sharing
-     * https://drive.google.com/open?id={id}
-     * https://drive.google.com/uc?export=view&id={id}
-     * https://drive.google.com/uc?export=download&id={id}
-     * https://drive.google.com/thumbnail?id={id}&sz=w400
+     * Parses the URL, fetches metadata, and confirms it's a PDF.
+     * Returns the fileId on success. Throws IllegalArgumentException with a
+     * clear, specific reason on any failure — shared by validateFile()
+     * (add/edit time) and downloadFile() (send time), so both moments give
+     * the user the same precise explanation.
+     */
+    private String resolveAndValidateMetadata(String fileUrl) {
+        String fileId = extractFileIdFromUrl(fileUrl);
+        String accessToken = getFreshTokenForCurrentUser();
+
+        DriveFileMetadata metadata = getFileMetadata(fileId, accessToken);
+        if (metadata == null || metadata.getMimeType() == null) {
+            throw new IllegalArgumentException("Unable to determine file type for this Google Drive file.");
+        }
+        if (!ACCEPTED_MIME_TYPE.equals(metadata.getMimeType())) {
+            log.warn("Rejected non-PDF Drive file. fileId={}, name={}, mimeType={}",
+                    fileId, metadata.getName(), metadata.getMimeType());
+            throw new IllegalArgumentException(
+                    "Only PDF files are supported. This file is: " + metadata.getMimeType()
+                            + (metadata.getName() != null ? " (" + metadata.getName() + ")" : ""));
+        }
+        return fileId;
+    }
+
+    /**
+     * Only accepts the standard public share link produced by Drive's
+     * "Share > Copy link" action:
+     * https://drive.google.com/file/d/{fileId}/view?usp=sharing
+     *
+     * Anything else (open?id=, uc?export=, thumbnail?id=, malformed URLs, etc.)
+     * is rejected with a clear, user-facing message.
      */
     private String extractFileIdFromUrl(String url) {
         if (url == null || url.isBlank()) {
-            throw new IllegalArgumentException("File URL must not be empty");
+            throw new IllegalArgumentException("CV link must not be empty.");
         }
 
-        if (url.contains("/d/")) {
-            String[] parts = url.split("/d/");
-            String idPart = parts[1];
-
-            if (idPart.contains("/")) {
-                idPart = idPart.substring(0, idPart.indexOf("/"));
-            }
-            if (idPart.contains("?")) {
-                idPart = idPart.substring(0, idPart.indexOf("?"));
-            }
-            return idPart;
+        Matcher matcher = PUBLIC_SHARE_LINK_PATTERN.matcher(url.trim());
+        if (!matcher.matches()) {
+            throw new IllegalArgumentException(
+                    "This doesn't look like a public Google Drive share link. "
+                            + "In Drive, right-click the file > \"Share\" > \"Copy link\" "
+                            + "(make sure access is set to \"Anyone with the link\"). "
+                            + "The link should look like: https://drive.google.com/file/d/FILE_ID/view?usp=sharing");
         }
 
-        // Fallback: parse the "id" query parameter (open?id=, uc?id=, thumbnail?id=,
-        // etc.)
-        Map<String, String> queryParams = UriComponentsBuilder.fromUriString(url)
-                .build()
-                .getQueryParams()
-                .toSingleValueMap();
-
-        String id = queryParams.get("id");
-        if (id != null && !id.isBlank()) {
-            return id;
-        }
-
-        throw new IllegalArgumentException("Unsupported or invalid Google Drive URL format: " + url);
+        return matcher.group(1);
     }
 
     private DriveFileMetadata getFileMetadata(String fileId, String accessToken) {
@@ -129,10 +149,32 @@ public class GoogleDriveStorageService implements CvStorageService {
                     entity,
                     DriveFileMetadata.class);
             return response.getBody();
+        } catch (HttpClientErrorException e) {
+            // Drive returns 403 for "exists but you don't have access" and often 404
+            // for a shared-but-not-published/deleted file, to avoid leaking existence.
+            // Either way, from the caller's perspective this is "the link isn't
+            // accessible to us" — a fixable input problem, not a server failure.
+            if (isPermissionOrNotFoundError(e.getStatusCode())) {
+                log.warn("Access denied fetching Drive file metadata. fileId={}, status={}", fileId, e.getStatusCode());
+                throw notAccessibleException();
+            }
+            log.error("Failed to fetch Drive file metadata for File ID: {}", fileId, e);
+            throw new RuntimeException("Google Drive metadata lookup failed: " + e.getMessage(), e);
         } catch (Exception e) {
             log.error("Failed to fetch Drive file metadata for File ID: {}", fileId, e);
             throw new RuntimeException("Google Drive metadata lookup failed: " + e.getMessage(), e);
         }
+    }
+
+    private boolean isPermissionOrNotFoundError(HttpStatusCode status) {
+        return status == HttpStatus.FORBIDDEN || status == HttpStatus.NOT_FOUND;
+    }
+
+    private IllegalArgumentException notAccessibleException() {
+        return new IllegalArgumentException(
+                "This Google Drive file isn't accessible. Make sure it's shared with "
+                        + "\"Anyone with the link\" (Share > General access > Anyone with the link) "
+                        + "and that the link hasn't been revoked or the file deleted.");
     }
 
     private String getFreshTokenForCurrentUser() {

@@ -2,6 +2,7 @@ package com.applyflow.tracker_api.services.storage;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
+
 import java.util.List;
 
 @Component
@@ -15,6 +16,7 @@ public class CvStorageFactory {
                 .filter(service -> service.supports(fileUrl))
                 .findFirst()
                 .orElseThrow(() -> new IllegalArgumentException(
-                        "No storage provider configured to support URL: " + fileUrl));
+                        "This CV link isn't from a supported storage provider. "
+                                + "Currently only Google Drive share links are supported."));
     }
 }

@@ -2,6 +2,8 @@ package com.applyflow.tracker_api.services;
 
 import com.applyflow.tracker_api.models.CvVariant;
 import com.applyflow.tracker_api.repositories.CvVariantRepository;
+import com.applyflow.tracker_api.services.storage.CvStorageFactory;
+import com.applyflow.tracker_api.services.storage.CvStorageService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
@@ -16,6 +18,7 @@ import org.springframework.web.server.ResponseStatusException;
 public class CvVariantService {
 
     private final CvVariantRepository cvVariantRepository;
+    private final CvStorageFactory storageFactory;
 
     @Transactional
     public CvVariant createCvVariant(CvVariant cvVariant) {
@@ -26,13 +29,15 @@ public class CvVariantService {
                     "You already have a CV named \"" + cvVariant.getName());
         }
 
+        validateFileUrl(cvVariant.getFileUrl());
+
         try {
             return cvVariantRepository.save(cvVariant);
         } catch (DataIntegrityViolationException ex) {
             // Safety net for a race condition between the check above and the save
             throw new IllegalStateException(
                     "You already have a CV named \"" + cvVariant.getName());
-    }
+        }
     }
 
     @Transactional(readOnly = true)
@@ -53,8 +58,10 @@ public class CvVariantService {
 
         if (cvVariantRepository.existsByUserIdAndNameIgnoreCaseAndIdNot(userId, details.getName(), id)) {
             throw new IllegalStateException(
-                    "You already have a CV  named \"" + details.getName());
+                    "You already have a CV named \"" + details.getName());
         }
+
+        validateFileUrl(details.getFileUrl());
 
         existing.setName(details.getName());
         existing.setLanguage(details.getLanguage());
@@ -64,8 +71,7 @@ public class CvVariantService {
             return cvVariantRepository.save(existing);
         } catch (DataIntegrityViolationException ex) {
             throw new IllegalStateException(
-                    "You already have a CV  named \"" + details.getName());
-
+                    "You already have a CV named \"" + details.getName());
         }
     }
 
@@ -73,5 +79,20 @@ public class CvVariantService {
     public void deleteCvVariant(Long id, Long userId) {
         CvVariant cv = getCvVariantByIdAndUser(id, userId);
         cvVariantRepository.delete(cv);
+    }
+
+    /**
+     * Confirms the CV link is well-formed, points at an accessible file, and
+     * is the right type — before we ever save it. This means a bad link is
+     * rejected the moment the user adds or edits a CV, instead of failing
+     * silently later when they try to send an application email.
+     */
+    private void validateFileUrl(String fileUrl) {
+        if (fileUrl == null || fileUrl.isBlank()) {
+            throw new IllegalArgumentException("A CV file link is required.");
+        }
+
+        CvStorageService storageService = storageFactory.getServiceForUrl(fileUrl);
+        storageService.validateFile(fileUrl);
     }
 }

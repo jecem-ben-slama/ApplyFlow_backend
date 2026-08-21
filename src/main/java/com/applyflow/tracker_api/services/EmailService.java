@@ -5,15 +5,12 @@ import com.applyflow.tracker_api.models.ApplicationStatus;
 import com.applyflow.tracker_api.models.CvVariant;
 import com.applyflow.tracker_api.repositories.ApplicationRepository;
 import com.applyflow.tracker_api.repositories.CvVariantRepository;
-import com.applyflow.tracker_api.services.storage.CvStorageFactory;
-import com.applyflow.tracker_api.services.storage.CvStorageService;
 import jakarta.mail.Session;
 import jakarta.mail.internet.InternetAddress;
 import jakarta.mail.internet.MimeMessage;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpMethod;
@@ -33,10 +30,10 @@ import java.util.Properties;
 @Slf4j
 public class EmailService {
 
-    private final CvStorageFactory storageFactory;
     private final CvVariantRepository cvVariantRepository;
     private final ApplicationRepository applicationRepository;
     private final ApplicationService applicationService;
+    private final EmailAttachmentService emailAttachmentService;
     private final RestTemplate restTemplate = new RestTemplate();
 
     @Value("${app.api.base-url}")
@@ -80,20 +77,17 @@ public class EmailService {
 
                 String cvUrl = variant.getFileUrl();
 
-                String originalDbName = variant.getName();
-                if (originalDbName != null && !originalDbName.endsWith(".pdf")) {
-                    originalDbName += ".pdf";
-                }
-
                 if (cvUrl != null && !cvUrl.isBlank()) {
-                    CvStorageService storageService = storageFactory.getServiceForUrl(cvUrl);
-                    byte[] fileBytes = storageService.downloadFile(cvUrl);
+                    String originalDbName = variant.getName();
+                    if (originalDbName != null && !originalDbName.endsWith(".pdf")) {
+                        originalDbName += ".pdf";
+                    }
 
                     String filename = (originalDbName != null && !originalDbName.isBlank())
                             ? originalDbName
                             : "CV_" + subject.replaceAll("\\s+", "_") + ".pdf";
 
-                    helper.addAttachment(filename, new ByteArrayResource(fileBytes));
+                    emailAttachmentService.attachCvFromUrl(helper, cvUrl, filename);
                 }
             }
 
@@ -125,6 +119,11 @@ public class EmailService {
                 }
             }
 
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            // User-facing validation errors (bad CV link, wrong app status, etc.) —
+            // preserve their message as-is instead of masking it.
+            log.warn("Email send rejected for application {}: {}", applicationId, e.getMessage());
+            throw e;
         } catch (Exception e) {
             log.error("Gmail API outbound transmission failed.", e);
             throw new RuntimeException("Failed to send email via Gmail API: " + e.getMessage(), e);

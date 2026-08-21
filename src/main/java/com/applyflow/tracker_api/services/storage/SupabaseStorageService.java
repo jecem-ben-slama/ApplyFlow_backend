@@ -24,4 +24,9 @@ public class SupabaseStorageService implements CvStorageService {
     public boolean supports(String fileUrl) {
         return fileUrl != null && fileUrl.contains("supabase.co");
     }
+
+    @Override
+    public void validateFile(String fileUrl) {
+        throw new UnsupportedOperationException("Unimplemented method 'validateFile'");
+    }
 }
