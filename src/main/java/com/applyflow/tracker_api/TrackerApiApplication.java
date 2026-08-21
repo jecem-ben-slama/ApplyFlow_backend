@@ -8,7 +8,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.session.jdbc.config.annotation.web.http.EnableJdbcHttpSession;
 
 @SpringBootApplication
-@EnableJdbcHttpSession
+@EnableJdbcHttpSession(maxInactiveIntervalInSeconds = 2592000) // 30 days in seconds
 @EnableSpringDataWebSupport(pageSerializationMode = EnableSpringDataWebSupport.PageSerializationMode.VIA_DTO)
 @EnableScheduling
 public class TrackerApiApplication {
