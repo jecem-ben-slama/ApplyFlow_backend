@@ -17,20 +17,15 @@ import java.util.concurrent.ConcurrentHashMap;
 @Component
 public class RateLimitInterceptor implements HandlerInterceptor {
 
-    // One bucket per client key. Fine for a single instance; if you ever
-    // scale to multiple backend instances behind Nginx, swap this map for
-    // a Redis-backed ProxyManager so all instances share the same counts.
     private final Map<String, Bucket> buckets = new ConcurrentHashMap<>();
 
     @Override
-    public boolean preHandle(HttpServletRequest request,
-            HttpServletResponse response,
-            Object handler) throws IOException {
-
+    public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler)
+            throws IOException {
         String path = request.getRequestURI();
-        String key = resolveClientKey(request) + ":" + bucketGroup(path);
-
-        Bucket bucket = buckets.computeIfAbsent(key, k -> newBucket(path));
+        String group = bucketGroup(path);
+        String key = resolveClientKey(request) + ":" + group;
+        Bucket bucket = buckets.computeIfAbsent(key, k -> newBucket(group));
 
         if (bucket.tryConsume(1)) {
             return true;
@@ -38,16 +33,11 @@ public class RateLimitInterceptor implements HandlerInterceptor {
 
         response.setStatus(HttpStatus.TOO_MANY_REQUESTS.value());
         response.setContentType("application/json");
-        response.setHeader("Retry-After", "60");
-        response.getWriter().write(
-                "{\"error\":\"Rate limit exceeded. Please slow down and try again shortly.\"}");
+        response.setHeader("Retry-After", retryAfterSeconds(group));
+        response.getWriter().write("{\"error\":\"Rate limit exceeded. Please slow down and try again shortly.\"}");
         return false;
     }
 
-    /**
-     * Different endpoints get different buckets/limits — grouped so e.g. all
-     * /api/emails/** calls share one limit, distinct from general reads.
-     */
     private String bucketGroup(String path) {
         if (path.startsWith("/api/auth"))
             return "auth";
@@ -56,44 +46,44 @@ public class RateLimitInterceptor implements HandlerInterceptor {
         return "default";
     }
 
-    private Bucket newBucket(String path) {
-        String group = bucketGroup(path);
-        Bandwidth limit = switch (group) {
-            // Tight limit on auth endpoints — brute-force protection.
-            case "auth" -> Bandwidth.builder()
-                    .capacity(5)
-                    .refillGreedy(5, Duration.ofMinutes(1))
+    private Bucket newBucket(String group) {
+        return switch (group) {
+            // Allows human multi-tab refreshes or retry loops comfortably;
+            // also fronted by a live Google token check, so this isn't the only brake here
+            case "auth" -> Bucket.builder()
+                    .addLimit(Bandwidth.builder().capacity(20).refillGreedy(20, Duration.ofMinutes(1)).build())
                     .build();
-            // Email sending likely hits a paid provider — keep this tight too.
-            case "emails" -> Bandwidth.builder()
-                    .capacity(10)
-                    .refillGreedy(10, Duration.ofMinutes(1))
+            // Calibrated to align with personal Gmail SMTP rate constraints
+            case "emails" -> Bucket.builder()
+                    .addLimit(Bandwidth.builder().capacity(2).refillGreedy(2, Duration.ofSeconds(1)).build()) // Burst
+                                                                                                              // limit
+                    .addLimit(Bandwidth.builder().capacity(15).refillGreedy(15, Duration.ofHours(1)).build()) // Sustained
+                                                                                                              // safety
+                                                                                                              // wall
                     .build();
-            // Everything else — general CRUD/read traffic.
-            default -> Bandwidth.builder()
-                    .capacity(60)
-                    .refillGreedy(60, Duration.ofMinutes(1))
+            // Default app layout data / navigation traffic
+            default -> Bucket.builder()
+                    .addLimit(Bandwidth.builder().capacity(100).refillGreedy(100, Duration.ofMinutes(1)).build())
                     .build();
         };
-        return Bucket.builder().addLimit(limit).build();
     }
 
-    /**
-     * Prefer the authenticated user's identity over IP, since IP is shared
-     * behind NAT/corporate proxies and easy to spoof via headers if trusted
-     * blindly. Falls back to IP for unauthenticated endpoints.
-     */
+    // Reports the wait time for whichever limit actually bites for this group.
+    // "emails" is gated by an hourly sustained cap once the 2/sec burst is spent,
+    // so telling the client "retry in 60s" there would just get them 429'd again.
+    private String retryAfterSeconds(String group) {
+        return switch (group) {
+            case "auth" -> "60";
+            case "emails" -> "3600";
+            default -> "60";
+        };
+    }
+
     private String resolveClientKey(HttpServletRequest request) {
         var auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth != null && auth.isAuthenticated() && !"anonymousUser".equals(auth.getPrincipal())) {
             return "user:" + auth.getName();
         }
-
-        // Nginx should already be setting X-Forwarded-For / X-Real-IP for the
-        // real client IP, since request.getRemoteAddr() will otherwise just
-        // return Nginx's own address. Make sure your Nginx config passes:
-        // proxy_set_header X-Real-IP $remote_addr;
-        // proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         String forwardedFor = request.getHeader("X-Forwarded-For");
         if (forwardedFor != null && !forwardedFor.isBlank()) {
             return "ip:" + forwardedFor.split(",")[0].trim();
