@@ -12,6 +12,8 @@ import com.applyflow.tracker_api.services.AuthService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
+
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -67,6 +69,7 @@ public class AuthController {
         }
 
         @PostMapping("/logout")
+        @CacheEvict(value = "users", key = "@securityContextService.getCurrentUserId()") 
         public ApiResponse<Void> logout(HttpServletRequest request, HttpServletResponse response) {
                 authService.logout(request, response);
 
@@ -83,6 +86,7 @@ public class AuthController {
          * endpoint directly and skip the frontend check entirely.
          */
         @DeleteMapping("/account")
+        @CacheEvict(value = "users", key = "@securityContextService.getCurrentUserId()")
         public ApiResponse<Void> requestAccountDeletion(
                         @RequestBody AccountDeletionRequestDto deletionRequest,
                         HttpServletRequest request,

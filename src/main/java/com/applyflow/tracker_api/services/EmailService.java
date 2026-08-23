@@ -16,8 +16,10 @@ import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestTemplate;
 
 import java.io.ByteArrayOutputStream;
@@ -34,7 +36,17 @@ public class EmailService {
     private final ApplicationRepository applicationRepository;
     private final ApplicationService applicationService;
     private final EmailAttachmentService emailAttachmentService;
-    private final RestTemplate restTemplate = new RestTemplate();
+
+    // Explicit connect/read timeouts — the default RestTemplate() has none,
+    // which means a hung Gmail API call would block the thread indefinitely.
+    private final RestTemplate restTemplate = buildRestTemplate();
+
+private static RestTemplate buildRestTemplate() {
+    SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+    factory.setConnectTimeout(5000);
+    factory.setReadTimeout(10000);
+    return new RestTemplate(factory);
+}
 
     @Value("${app.api.base-url}")
     private String baseUrl;
@@ -112,13 +124,23 @@ public class EmailService {
             if (applicationId != null) {
                 try {
                     applicationService.recordSystemStatusEvent(
-                            applicationId, ApplicationStatus.SENT, "Email sent sucessfully ");
+                            applicationId, ApplicationStatus.SENT, "Email sent successfully");
                 } catch (Exception statusEx) {
                     log.warn("Email sent successfully but failed to update status to sent for application {}: {}",
                             applicationId, statusEx.getMessage());
                 }
             }
 
+        } catch (HttpClientErrorException.TooManyRequests e) {
+            // Gmail API's own quota rejected the send, distinct from our local
+            // interceptor's rate limit — worth its own log signal and message.
+            log.warn("Gmail API quota hit for user={}, application={}", userEmail, applicationId);
+            throw new RuntimeException("Gmail is rate-limiting this account — please wait before sending more.", e);
+        } catch (HttpClientErrorException.Unauthorized e) {
+            // Access token expired or revoked — different fix (reconnect) than a quota
+            // issue.
+            log.warn("Gmail access token expired/invalid for user={}, application={}", userEmail, applicationId);
+            throw new RuntimeException("Your Google session has expired — please reconnect your account.", e);
         } catch (IllegalArgumentException | IllegalStateException e) {
             // User-facing validation errors (bad CV link, wrong app status, etc.) —
             // preserve their message as-is instead of masking it.
