@@ -27,7 +27,7 @@ EXPOSE 8080
 # Let Docker/orchestrators know when the app is actually ready
 # (requires spring-boot-starter-actuator on the classpath)
 HEALTHCHECK --interval=30s --timeout=3s --start-period=40s \
-  CMD wget -qO- http://localhost:8080/actuator/health || exit 1
+  CMD wget -qO- http://localhost:8080/actuator/health/liveness || exit 1
 
 # Run the jar file, capping heap to a safe % of container memory
 ENTRYPOINT ["java", "-XX:MaxRAMPercentage=75.0", "-jar", "app.jar"]
