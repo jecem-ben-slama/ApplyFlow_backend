@@ -43,7 +43,7 @@ jobs:
       - name: Health check
         run: |
           for i in {1..10}; do
-            echo "Attempt $i: Checking health at ${{ secrets.RENDER_HEALTH_URL }}/actuator/health"
+            echo "Attempt $i: Checking health at ${{ secrets.RENDER_HEALTH_URL }}/actuator/health/liveness"
             if curl -sf "${{ secrets.RENDER_HEALTH_URL }}/actuator/health"; then
               echo "Backend healthy"
               exit 0
