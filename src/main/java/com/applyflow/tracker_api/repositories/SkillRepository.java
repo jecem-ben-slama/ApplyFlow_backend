@@ -1,9 +1,12 @@
 package com.applyflow.tracker_api.repositories;
 
 import com.applyflow.tracker_api.models.Skill;
+import com.applyflow.tracker_api.models.User;
+
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -22,6 +25,10 @@ public interface SkillRepository extends JpaRepository<Skill, Long> {
     Optional<Skill> findByIdAndUserId(Long id, Long userId);
 
     Optional<Skill> findByName(String name);
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("UPDATE Skill s SET s.user = :realUser WHERE s.user.id = :guestId")
+    void reassignOwner(@Param("guestId") Long guestId, @Param("realUser") User realUser);
 
     @Query("""
                 SELECT s FROM Skill s

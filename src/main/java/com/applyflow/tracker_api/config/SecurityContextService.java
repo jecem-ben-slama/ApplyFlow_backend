@@ -34,6 +34,8 @@ public class SecurityContextService {
             userId = customUser.getId();
         } else if (principal instanceof CustomOidcUserWrapper customOidcUser) {
             userId = customOidcUser.getId();
+        } else if (principal instanceof GuestPrincipal guestPrincipal) {
+            userId = guestPrincipal.getId();
         } else {
             System.out.println(
                     " DEBUG: Unexpected Principal Class structure encountered: " + principal.getClass().getName());

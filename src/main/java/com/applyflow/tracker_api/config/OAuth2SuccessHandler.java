@@ -2,10 +2,12 @@ package com.applyflow.tracker_api.config;
 
 import com.applyflow.tracker_api.models.User;
 import com.applyflow.tracker_api.repositories.UserRepository;
+import com.applyflow.tracker_api.services.AccountMergeService;
 import com.applyflow.tracker_api.services.AccountReactivationHelper;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import jakarta.servlet.http.HttpSession;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -31,6 +33,7 @@ public class OAuth2SuccessHandler implements AuthenticationSuccessHandler {
     private final UserRepository userRepository;
     private final OAuth2AuthorizedClientService authorizedClientService;
     private final AccountReactivationHelper reactivationHelper;
+    private final AccountMergeService accountMergeService;
 
     @Value("${app.frontend-url}")
     private String frontendUrl;
@@ -104,6 +107,20 @@ public class OAuth2SuccessHandler implements AuthenticationSuccessHandler {
         user.setUpdatedAt(LocalDateTime.now());
 
         User savedUser = userRepository.save(user);
+        HttpSession session = request.getSession(false);
+        if (session != null) {
+            Object guestIdAttr = session.getAttribute("guestUserId");
+            if (guestIdAttr instanceof Long guestUserId && !guestUserId.equals(savedUser.getId())) {
+                userRepository.findById(guestUserId)
+                        .filter(u -> Boolean.TRUE.equals(u.getIsGuest()))
+                        .ifPresent(guestUser -> {
+                            log.info("Merging guest {} data into user {} after Google login",
+                                    guestUserId, savedUser.getId());
+                            accountMergeService.mergeGuestInto(guestUser, savedUser);
+                        });
+            }
+            session.removeAttribute("guestUserId");
+        }
         log.info("Successfully committed synchronization states to database engine for ID: {}", savedUser.getId());
 
         CustomOAuth2User customPrincipal = new CustomOAuth2User(oAuth2User, savedUser.getId());

@@ -21,4 +21,9 @@ public interface CategoryRepository extends JpaRepository<Category, Long> {
     Optional<Category> findByIdAndUserId(Long id, Long userId);
 
     boolean existsByNameAndUserId(String name, Long userId);
+    
+    List<Category> findAllByUserId(Long userId); // Spring Data resolves this to user.id
+
+    @Query("SELECT c.name FROM Category c WHERE c.user.id = :userId")
+    List<String> findAllNamesByUserId(@Param("userId") Long userId);
 }

@@ -52,8 +52,9 @@ public class SecurityConfig {
                                                 }))
 
                                 .authorizeHttpRequests(auth -> auth
-                                                .requestMatchers("/", "/login/**", "/oauth2/**", "/actuator/health/liveness","/api/track/**",
-                                                                "/api/version")
+                                                .requestMatchers("/", "/login/**", "/oauth2/**",
+                                                                "/actuator/health/liveness",
+                                                                "/api/track/**", "/api/version", "/api/auth/guest")
                                                 .permitAll()
                                                 .anyRequest().authenticated())
                                 .oauth2Login(oauth2 -> oauth2

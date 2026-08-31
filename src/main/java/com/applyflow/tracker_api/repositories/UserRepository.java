@@ -11,13 +11,15 @@ import java.util.Optional;
 @Repository
 public interface UserRepository extends JpaRepository<User, Long> {
 
-    // Cache user objects by their ID. Subsequent calls return instantly without
-    // SQL.
     Optional<User> findById(Long id);
 
     Optional<User> findByGoogleSub(String googleSub);
 
     Optional<User> findByEmail(String email);
 
+    Optional<User> findByGuestToken(String guestToken);
+
     List<User> findByDeletionRequestedAtBefore(LocalDateTime cutoff);
+
+    List<User> findByIsGuestTrueAndCreatedAtBefore(LocalDateTime cutoff);
 }
