@@ -35,8 +35,10 @@ public class DevSecurityConfig {
                                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                                 .csrf(csrf -> csrf.disable())
                                 .authorizeHttpRequests(auth -> auth
-                                                .requestMatchers("/", "/login/**", "/oauth2/**", "/api/track/**",
-                                                                "/api/version").permitAll()
+                                                .requestMatchers("/", "/login/**", "/oauth2/**",
+                                                                "/actuator/health/liveness",
+                                                                "/api/track/**", "/api/version", "/api/auth/guest")
+                                                .permitAll()
                                                 .anyRequest().authenticated())
                                 .oauth2Login(oauth2 -> oauth2
                                                 .authorizationEndpoint(auth -> auth

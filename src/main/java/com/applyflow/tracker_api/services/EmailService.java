@@ -41,12 +41,12 @@ public class EmailService {
     // which means a hung Gmail API call would block the thread indefinitely.
     private final RestTemplate restTemplate = buildRestTemplate();
 
-private static RestTemplate buildRestTemplate() {
-    SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
-    factory.setConnectTimeout(5000);
-    factory.setReadTimeout(10000);
-    return new RestTemplate(factory);
-}
+    private static RestTemplate buildRestTemplate() {
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(5000);
+        factory.setReadTimeout(10000);
+        return new RestTemplate(factory);
+    }
 
     @Value("${app.api.base-url}")
     private String baseUrl;
@@ -57,6 +57,20 @@ private static RestTemplate buildRestTemplate() {
             String body, Long cvVariantId, Long applicationId) {
 
         try {
+            // Guard check: no valid Google access token to send with. Most
+            // commonly this means the caller resolved a guest user (guests
+            // never have Google tokens) or a linked account whose token
+            // couldn't be refreshed — either way, without this check a null
+            // token slips past every catch block below and produces a
+            // confusing generic "Failed to send email via Gmail API" message
+            // instead of telling the user what's actually wrong.
+            if (accessToken == null || accessToken.isBlank()) {
+                throw new IllegalArgumentException(
+                        "Sending email requires a connected Google account. "
+                                + "Guest sessions aren't linked to Gmail — "
+                                + "sign in with Google to send application emails.");
+            }
+
             // Guard check: Ensure application is in COMPILED state before allowing
             // send/resend
             if (applicationId != null) {
@@ -142,8 +156,8 @@ private static RestTemplate buildRestTemplate() {
             log.warn("Gmail access token expired/invalid for user={}, application={}", userEmail, applicationId);
             throw new RuntimeException("Your Google session has expired — please reconnect your account.", e);
         } catch (IllegalArgumentException | IllegalStateException e) {
-            // User-facing validation errors (bad CV link, wrong app status, etc.) —
-            // preserve their message as-is instead of masking it.
+            // User-facing validation errors (bad CV link, wrong app status, missing
+            // Google token, etc.) — preserve their message as-is instead of masking it.
             log.warn("Email send rejected for application {}: {}", applicationId, e.getMessage());
             throw e;
         } catch (Exception e) {

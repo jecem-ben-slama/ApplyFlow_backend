@@ -177,11 +177,28 @@ public class GoogleDriveStorageService implements CvStorageService {
                         + "and that the link hasn't been revoked or the file deleted.");
     }
 
+    private IllegalArgumentException guestNotSupportedException() {
+        return new IllegalArgumentException(
+                "Attaching a CV from Google Drive requires a Google account. "
+                        + "Guest sessions aren't linked to Google Drive yet — "
+                        + "sign in with Google to connect your Drive and attach CVs.");
+    }
+
     private String getFreshTokenForCurrentUser() {
         Long currentUserId = securityContextService.getCurrentUserId();
 
         User user = userRepository.findById(currentUserId)
                 .orElseThrow(() -> new RuntimeException("Authenticated user not found in database: " + currentUserId));
+
+        // Guests never go through the Google OAuth flow, so they have no
+        // access/refresh token to work with. Without this check,
+        // tokenManager.getValidAccessToken(user) would be handed a user with
+        // null tokens and fail with an opaque internal error instead of a
+        // clear, actionable message.
+        if (Boolean.TRUE.equals(user.getIsGuest())) {
+            log.info("Guest user {} attempted to use Google Drive CV storage", user.getId());
+            throw guestNotSupportedException();
+        }
 
         log.info("Provisioning fresh access token for user: {} via Security Context", user.getEmail());
         return tokenManager.getValidAccessToken(user);

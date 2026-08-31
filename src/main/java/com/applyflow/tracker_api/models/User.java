@@ -21,10 +21,14 @@ public class User {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "google_sub", nullable = false, unique = true, length = 255)
+    /**
+     * Null for guest sessions. Unique constraint still holds since Postgres
+     * treats multiple NULLs as distinct — no collision risk between guests.
+     */
+    @Column(name = "google_sub", unique = true, length = 255)
     private String googleSub;
 
-    @Column(nullable = false, unique = true, length = 255)
+    @Column(unique = true, length = 255)
     private String email;
 
     @Column(name = "first_name", length = 100)
@@ -49,6 +53,21 @@ public class User {
 
     @Column(name = "deletion_requested_at")
     private LocalDateTime deletionRequestedAt;
+
+    /**
+     * True for guest sessions created via /api/auth/guest.
+     * Flipped to false once the user links a Google account.
+     */
+    @Column(name = "is_guest", nullable = false)
+    @Builder.Default
+    private Boolean isGuest = false;
+
+    /**
+     * Random UUID identifying an anonymous guest session. Null once the
+     * guest links a Google account (or was never a guest).
+     */
+    @Column(name = "guest_token", unique = true, length = 255)
+    private String guestToken;
 
     @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
     @Builder.Default

@@ -19,6 +19,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.UUID;
+
 @RestController
 @RequestMapping("/api/auth")
 @RequiredArgsConstructor
@@ -57,11 +59,48 @@ public class AuthController {
                                 user.getPictureUrl(),
                                 user.getCreatedAt(),
                                 user.getUpdatedAt(),
-                                reactivated);
+                                reactivated,
+                                Boolean.TRUE.equals(user.getIsGuest()));
 
                 return ApiResponse.<UserDto>builder()
                                 .success(true)
                                 .message("Session verified successfully.")
+                                .data(userDto)
+                                .build();
+        }
+
+        /**
+         * Starts an anonymous guest session. Creates a bare User row (no Google
+         * identity yet) and establishes a real session cookie for it, exactly
+         * like a normal login — every other endpoint works identically for
+         * guests since SecurityContextService resolves the principal the same way.
+         */
+        @PostMapping("/guest")
+        public ApiResponse<UserDto> createGuestSession(HttpServletRequest request, HttpServletResponse response) {
+                User guest = User.builder()
+                                .isGuest(true)
+                                .guestToken(UUID.randomUUID().toString())
+                                .build();
+                userRepository.save(guest);
+
+                authService.establishGuestSession(request, response, guest.getId());
+
+                UserDto userDto = new UserDto(
+                                guest.getId(),
+                                null,
+                                null,
+                                null,
+                                null,
+                                null,
+                                null,
+                                guest.getCreatedAt(),
+                                guest.getUpdatedAt(),
+                                false,
+                                true);
+
+                return ApiResponse.<UserDto>builder()
+                                .success(true)
+                                .message("Guest session started.")
                                 .data(userDto)
                                 .build();
         }

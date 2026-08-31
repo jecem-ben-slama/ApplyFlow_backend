@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
 import java.util.Optional;
 
 @Repository
@@ -50,4 +51,9 @@ public interface TemplateRepository extends JpaRepository<Template, Long> {
             @Param("language") String language,
             @Param("term") String term,
             Pageable pageable);
+
+    List<Template> findAllByUserId(Long userId); // Spring Data resolves this to user.id
+
+    @Query("SELECT t.name FROM Template t WHERE t.user.id = :userId")
+    List<String> findAllNamesByUserId(@Param("userId") Long userId);
 }
