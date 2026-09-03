@@ -15,7 +15,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
@@ -279,15 +278,7 @@ public class StatsService {
                 return from.minusNanos(1_000_000L);
         }
 
-        private List<LocalDate> buildDatePoints(LocalDateTime from, LocalDateTime to, String granularity) {
-                List<LocalDate> dates = new ArrayList<>();
-                LocalDate start = from.toLocalDate();
-                LocalDate end = to.toLocalDate();
-                for (LocalDate date = start; !date.isAfter(end); date = date.plusDays(1)) {
-                        dates.add(date);
-                }
-                return dates;
-        }
+     
 
         private TimelineEventDto toDto(ApplicationEvent event) {
                 return TimelineEventDto.builder()
