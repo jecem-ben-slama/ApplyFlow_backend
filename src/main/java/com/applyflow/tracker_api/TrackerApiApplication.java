@@ -9,13 +9,17 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.session.jdbc.config.annotation.web.http.EnableJdbcHttpSession;
 
 @SpringBootApplication
-@EnableJdbcHttpSession(maxInactiveIntervalInSeconds = 2592000) // 30 days in seconds
+@EnableJdbcHttpSession(maxInactiveIntervalInSeconds = 2592000, cleanupCron = "0 0 3 * * *")
 @EnableSpringDataWebSupport(pageSerializationMode = EnableSpringDataWebSupport.PageSerializationMode.VIA_DTO)
 @EnableScheduling
 @EnableCaching
 public class TrackerApiApplication {
+
 	public static void main(String[] args) {
-		Dotenv dotenv = Dotenv.configure().ignoreIfMissing().load();
+		Dotenv dotenv = Dotenv.configure()
+				.ignoreIfMissing()
+				.load();
+
 		dotenv.entries().forEach(entry -> System.setProperty(entry.getKey(), entry.getValue()));
 
 		SpringApplication.run(TrackerApiApplication.class, args);
