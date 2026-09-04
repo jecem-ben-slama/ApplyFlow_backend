@@ -1,23 +1,30 @@
 package com.applyflow.tracker_api.services.storage;
 
+import org.springframework.core.io.InputStreamSource;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestTemplate;
-import org.springframework.http.HttpMethod;
-import org.springframework.http.ResponseEntity;
 
-import java.net.URI;
-
+/**
+ * Supabase storage support isn't implemented yet. validateFile() and
+ * downloadFile() both throw IllegalArgumentException — the same exception
+ * type every other CvStorageService implementation uses for a rejected
+ * link — rather than an unchecked UnsupportedOperationException. Callers
+ * (e.g. CvVariantService) rely on the interface's documented contract to
+ * treat any implementation interchangeably; throwing a different exception
+ * type here would violate that contract (Liskov substitution) and surface
+ * as an unhandled 500 instead of the same clean validation error every
+ * other unsupported/invalid link produces.
+ */
 @Service
 public class SupabaseStorageService implements CvStorageService {
 
-    private final RestTemplate restTemplate = new RestTemplate();
-
     @Override
-    public byte[] downloadFile(String fileUrl) {
-        URI uri = URI.create(fileUrl); // treats the URL as already-encoded
-        ResponseEntity<byte[]> response = restTemplate.exchange(
-                uri, HttpMethod.GET, null, byte[].class);
-        return response.getBody();
+    public InputStreamSource downloadFile(String fileUrl) {
+        // Not implemented: no metadata/type/size check exists yet for
+        // Supabase, so we refuse rather than fetch and attach an
+        // unvalidated file. validateFile() should already have blocked
+        // this earlier (at add/edit time), but downloadFile() enforces the
+        // same rule independently in case it's ever called directly.
+        throw notYetSupportedException();
     }
 
     @Override
@@ -27,6 +34,12 @@ public class SupabaseStorageService implements CvStorageService {
 
     @Override
     public void validateFile(String fileUrl) {
-        throw new UnsupportedOperationException("Unimplemented method 'validateFile'");
+        throw notYetSupportedException();
+    }
+
+    private IllegalArgumentException notYetSupportedException() {
+        return new IllegalArgumentException(
+                "Supabase CV links aren't supported yet. "
+                        + "Currently only Google Drive share links are supported.");
     }
 }
