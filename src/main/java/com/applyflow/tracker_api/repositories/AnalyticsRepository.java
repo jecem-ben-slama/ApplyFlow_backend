@@ -36,6 +36,7 @@ public interface AnalyticsRepository extends JpaRepository<Application, Long> {
                         ") THEN 1 ELSE 0 END), 0.0) " +
                         "FROM Application a LEFT JOIN a.cvVariant cv " +
                         "WHERE a.user.id = :userId " +
+                        "AND (a.status IS NULL OR LOWER(a.status) <> 'compiled') " +
                         "AND a.dateApplied >= :from AND a.dateApplied <= :to " +
                         "GROUP BY cv.name " +
                         "ORDER BY COUNT(a) DESC, cv.name ASC")
@@ -52,6 +53,7 @@ public interface AnalyticsRepository extends JpaRepository<Application, Long> {
                         ") THEN 1 ELSE 0 END), 0.0) " +
                         "FROM Application a " +
                         "WHERE a.user.id = :userId " +
+                        "AND (a.status IS NULL OR LOWER(a.status) <> 'compiled') " +
                         "AND a.dateApplied >= :from AND a.dateApplied <= :to " +
                         "GROUP BY a.language " +
                         "ORDER BY COUNT(a) DESC, a.language ASC")
@@ -68,6 +70,7 @@ public interface AnalyticsRepository extends JpaRepository<Application, Long> {
                         ") THEN 1 ELSE 0 END), 0.0) " +
                         "FROM Application a " +
                         "WHERE a.user.id = :userId " +
+                        "AND (a.status IS NULL OR LOWER(a.status) <> 'compiled') " +
                         "AND a.dateApplied >= :from AND a.dateApplied <= :to " +
                         "GROUP BY a.jobTitle " +
                         "ORDER BY COUNT(a) DESC, a.jobTitle ASC")
@@ -86,6 +89,7 @@ public interface AnalyticsRepository extends JpaRepository<Application, Long> {
                         ") THEN 1 ELSE 0 END), 0.0) " +
                         "FROM Application a LEFT JOIN a.template t " +
                         "WHERE a.user.id = :userId " +
+                        "AND (a.status IS NULL OR LOWER(a.status) <> 'compiled') " +
                         "AND a.dateApplied >= :from AND a.dateApplied <= :to " +
                         "GROUP BY t.name " +
                         "ORDER BY COUNT(a) DESC, t.name ASC")
