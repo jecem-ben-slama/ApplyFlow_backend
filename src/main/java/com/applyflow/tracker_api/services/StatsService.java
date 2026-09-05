@@ -2,7 +2,6 @@ package com.applyflow.tracker_api.services;
 
 import com.applyflow.tracker_api.dtos.*;
 import com.applyflow.tracker_api.models.Application;
-import com.applyflow.tracker_api.models.ApplicationEvent;
 import com.applyflow.tracker_api.models.ApplicationStatus;
 import com.applyflow.tracker_api.repositories.ApplicationEventRepository;
 import com.applyflow.tracker_api.repositories.ApplicationRepository;
@@ -29,9 +28,14 @@ public class StatsService {
         private static final List<String> TERMINAL_STATUSES = List.of(
                         "OFFER", "REJECTED", "GHOSTED", "WITHDRAWN");
         private static final List<String> IGNORED_STATUSES = List.of("VIEWED");
+        private static final List<String> SUMMARY_EVENT_STATUSES = List.of(
+                        ApplicationStatus.SENT.name(),
+                        ApplicationStatus.RESPONDED.name(),
+                        ApplicationStatus.VIEWED.name(),
+                        ApplicationStatus.INTERVIEWING.name(),
+                        ApplicationStatus.OFFER.name());
         private final ApplicationRepository applicationRepository;
         private final ApplicationEventRepository applicationEventRepository;
-
 
         @Transactional(readOnly = true)
         public StatsSummaryDto getSummary(Long userId, LocalDateTime from, LocalDateTime to,
@@ -48,8 +52,6 @@ public class StatsService {
                                 cvVariant, status);
                 return StatsSummaryDto.fromPeriod(current, previous);
         }
-
-    
 
         @Transactional(readOnly = true)
         public List<FunnelStageDto> getFunnel(Long userId, LocalDateTime from, LocalDateTime to,
@@ -83,21 +85,15 @@ public class StatsService {
         @Transactional(readOnly = true)
         public List<TimelineEventDto> getRecentEvents(Long userId, int limit) {
                 Pageable pageable = PageRequest.of(0, Math.max(1, Math.min(limit, 50)));
-                return applicationEventRepository.findRecentByUser(userId, pageable).stream()
-                                .map(this::toDto)
-                                .collect(Collectors.toList());
+                return applicationEventRepository.findRecentDtosByUser(userId, pageable);
         }
 
         @Transactional(readOnly = true)
         public List<TimelineEventDto> getApplicationTimeline(Long applicationId, Long userId) {
                 Application app = applicationRepository.findByIdAndUserId(applicationId, userId)
                                 .orElseThrow(() -> new RuntimeException("Application not found or access denied."));
-
-                return applicationEventRepository.findByApplicationIdOrderByOccurredAtAsc(app.getId()).stream()
-                                .map(this::toDto)
-                                .collect(Collectors.toList());
+                return applicationEventRepository.findTimelineDtosByApplicationIdAndUserId(app.getId(), userId);
         }
-
 
         @Transactional(readOnly = true)
         public List<RejectionStageDto> getRejectionStageBreakdown(Long userId, LocalDateTime from, LocalDateTime to,
@@ -105,49 +101,31 @@ public class StatsService {
                 LocalDateTime effFrom = DateRangeUtils.effectiveFrom(from);
                 LocalDateTime effTo = DateRangeUtils.effectiveTo(to);
 
-                List<ApplicationEvent> rejections = applicationEventRepository
-                                .findByApplication_User_IdAndStatusInRange(
-                                                userId, ApplicationStatus.REJECTED.name(), effFrom, effTo);
-
+                boolean hasFilters = jobTitle != null || template != null || cvVariant != null || status != null;
+                List<Long> rejectedAppIds = applicationEventRepository.findDistinctApplicationIdsByUserAndStatusInRange(
+                                userId, ApplicationStatus.REJECTED.name(), effFrom, effTo);
                 List<Long> filteredAppIds = applicationRepository.findApplicationIdsByUserIdAndFilters(
                                 userId, effFrom, effTo, jobTitle, template, cvVariant, status);
-                Set<Long> appIdSet = new HashSet<>(filteredAppIds);
-
-                List<ApplicationEvent> scopedRejections = rejections.stream()
-                                .filter(event -> appIdSet.isEmpty()
-                                                || appIdSet.contains(event.getApplication().getId()))
-                                .collect(Collectors.toList());
+                if (hasFilters) {
+                        rejectedAppIds = rejectedAppIds.stream()
+                                        .filter(new HashSet<>(filteredAppIds)::contains)
+                                        .collect(Collectors.toList());
+                }
 
                 Set<String> postInterviewStatuses = Set.of(
                                 ApplicationStatus.INTERVIEW_SCHEDULED.name(),
                                 ApplicationStatus.INTERVIEWING.name(),
                                 ApplicationStatus.OFFER.name());
 
-                List<Long> rejectedAppIds = scopedRejections.stream()
-                                .map(event -> event.getApplication().getId())
-                                .distinct()
-                                .collect(Collectors.toList());
-
                 long beforeInterview = 0;
                 long afterInterview = 0;
 
                 if (!rejectedAppIds.isEmpty()) {
-                        // Single batched fetch instead of one query per rejected application.
-                        Map<Long, List<ApplicationEvent>> timelinesByApp = applicationEventRepository
-                                        .findByApplicationIdInOrderByApplicationIdAscOccurredAtAsc(rejectedAppIds)
-                                        .stream()
-                                        .collect(Collectors.groupingBy(e -> e.getApplication().getId()));
-
-                        for (Long appId : rejectedAppIds) {
-                                List<ApplicationEvent> timeline = timelinesByApp.getOrDefault(appId, List.of());
-                                boolean reachedInterviewStage = timeline.stream()
-                                                .anyMatch(e -> postInterviewStatuses.contains(e.getStatus()));
-                                if (reachedInterviewStage) {
-                                        afterInterview++;
-                                } else {
-                                        beforeInterview++;
-                                }
-                        }
+                        Set<Long> afterInterviewAppIds = new HashSet<>(applicationEventRepository
+                                        .findApplicationIdsWithStatuses(rejectedAppIds,
+                                                        new ArrayList<>(postInterviewStatuses)));
+                        afterInterview = afterInterviewAppIds.size();
+                        beforeInterview = rejectedAppIds.size() - afterInterview;
                 }
 
                 return List.of(
@@ -155,48 +133,32 @@ public class StatsService {
                                 RejectionStageDto.builder().stage("AFTER_INTERVIEW").count(afterInterview).build());
         }
 
-
-     
-   
         // ---- Summary (unchanged path — single current + single previous call) --
 
         private StatsPeriodSummaryDto buildPeriodSummary(Long userId, LocalDateTime from, LocalDateTime to,
                         String jobTitle, String template, String cvVariant, String status) {
-                LocalDateTime effFrom = DateRangeUtils.effectiveFrom(from);
-                LocalDateTime effTo = DateRangeUtils.effectiveTo(to);
-                List<Long> applicationIds = applicationRepository.findApplicationIdsByUserIdAndFilters(userId, effFrom,
-                                effTo,
+                List<Long> applicationIds = applicationRepository.findApplicationIdsByUserIdAndFilters(userId, from,
+                                to,
                                 jobTitle, template, cvVariant, status);
                 long total = applicationIds.size();
-                long sentCount = countApplicationsThatReached(userId, ApplicationStatus.SENT.name(), effFrom, effTo,
-                                applicationIds, jobTitle, template, cvVariant, status);
-                long respondedCount = countApplicationsThatReached(userId, ApplicationStatus.RESPONDED.name(), effFrom,
-                                effTo,
-                                applicationIds, jobTitle, template, cvVariant, status);
-                long viewedCount = countApplicationsThatReached(userId, ApplicationStatus.VIEWED.name(), effFrom, effTo,
-                                applicationIds, jobTitle, template, cvVariant, status);
-                long interviewedCount = countApplicationsThatReached(userId, ApplicationStatus.INTERVIEWING.name(),
-                                effFrom,
-                                effTo, applicationIds, jobTitle, template, cvVariant, status);
-                long offerCount = countApplicationsThatReached(userId, ApplicationStatus.OFFER.name(), effFrom, effTo,
-                                applicationIds, jobTitle, template, cvVariant, status);
-                long activeCount = applicationRepository.countByUserIdAndStatusInFilters(userId, ACTIVE_STATUSES,
-                                effFrom,
-                                effTo, jobTitle, template, cvVariant, status);
-                long terminalCount = applicationRepository.countByUserIdAndStatusInFilters(userId, TERMINAL_STATUSES,
-                                effFrom,
-                                effTo, jobTitle, template, cvVariant, status);
-                long ignoredCount = applicationRepository.countByUserIdAndStatusInFilters(userId, IGNORED_STATUSES,
-                                effFrom,
-                                effTo, jobTitle, template, cvVariant, status);
+                Map<String, Long> reachedCounts = countReachedByStatus(userId, applicationIds, from, to);
+                long sentCount = reachedCounts.getOrDefault(ApplicationStatus.SENT.name(), 0L);
+                long respondedCount = reachedCounts.getOrDefault(ApplicationStatus.RESPONDED.name(), 0L);
+                long viewedCount = reachedCounts.getOrDefault(ApplicationStatus.VIEWED.name(), 0L);
+                long interviewedCount = reachedCounts.getOrDefault(ApplicationStatus.INTERVIEWING.name(), 0L);
+                long offerCount = reachedCounts.getOrDefault(ApplicationStatus.OFFER.name(), 0L);
+
+                Map<String, Long> currentStatusCounts = countCurrentStatusesByStatus(userId, applicationIds, from, to,
+                                jobTitle, template, cvVariant, status);
+                long activeCount = countStatuses(currentStatusCounts, ACTIVE_STATUSES);
+                long terminalCount = countStatuses(currentStatusCounts, TERMINAL_STATUSES);
+                long ignoredCount = countStatuses(currentStatusCounts, IGNORED_STATUSES);
                 long neverViewedCount = Math.max(sentCount - viewedCount, 0);
                 double responseRate = sentCount == 0 ? 0.0 : (double) respondedCount / sentCount;
                 double neverViewedRate = sentCount == 0 ? 0.0 : (double) neverViewedCount / sentCount;
                 double ignoredRate = viewedCount == 0 ? 0.0 : (double) ignoredCount / viewedCount;
                 Double interviewToOfferRate = interviewedCount == 0 ? null : (double) offerCount / interviewedCount;
-                Double avgResponseDays = computeAvgResponseDays(userId, effFrom, effTo, applicationIds, jobTitle,
-                                template,
-                                cvVariant, status);
+                Double avgResponseDays = computeAvgResponseDays(userId, from, to, applicationIds);
 
                 return StatsPeriodSummaryDto.builder()
                                 .totalApplications(total)
@@ -217,30 +179,56 @@ public class StatsService {
                                 .build();
         }
 
-        private long countApplicationsThatReached(Long userId, String status, LocalDateTime from, LocalDateTime to,
-                        List<Long> applicationIds, String jobTitle, String template, String cvVariant,
-                        String filterStatus) {
-                if (applicationIds == null || applicationIds.isEmpty()) {
-                        return 0L;
+        private Map<String, Long> countReachedByStatus(Long userId, List<Long> applicationIds,
+                        LocalDateTime from, LocalDateTime to) {
+                if (applicationIds.isEmpty()) {
+                        return Map.of();
                 }
-                return applicationEventRepository.countDistinctApplicationsByStatusAndApplicationIds(
-                                userId, status, applicationIds, from, to);
+                return toCountMap(applicationEventRepository.countDistinctApplicationsByStatusesAndApplicationIds(
+                                userId, SUMMARY_EVENT_STATUSES, applicationIds, from, to));
+        }
+
+        private Map<String, Long> countCurrentStatusesByStatus(Long userId, List<Long> applicationIds,
+                        LocalDateTime from, LocalDateTime to, String jobTitle, String template, String cvVariant,
+                        String status) {
+                if (applicationIds.isEmpty()) {
+                        return Map.of();
+                }
+                List<String> statuses = new ArrayList<>();
+                statuses.addAll(ACTIVE_STATUSES);
+                statuses.addAll(TERMINAL_STATUSES);
+                statuses.addAll(IGNORED_STATUSES);
+                return toCountMap(applicationRepository.countByUserIdAndStatusesInFilters(userId, statuses, from, to,
+                                jobTitle, template, cvVariant, status));
+        }
+
+        private Map<String, Long> toCountMap(List<StatsStatusCountDto> counts) {
+                Map<String, Long> result = new HashMap<>();
+                for (StatsStatusCountDto count : counts) {
+                        result.put(count.status(), count.count());
+                }
+                return result;
+        }
+
+        private long countStatuses(Map<String, Long> counts, List<String> statuses) {
+                return statuses.stream().mapToLong(status -> counts.getOrDefault(status, 0L)).sum();
         }
 
         private Double computeAvgResponseDays(Long userId, LocalDateTime from, LocalDateTime to,
-                        List<Long> applicationIds, String jobTitle, String template, String cvVariant, String status) {
-                if (applicationIds == null || applicationIds.isEmpty()) {
+                        List<Long> applicationIds) {
+                if (applicationIds.isEmpty()) {
                         return null;
                 }
                 Map<Long, LocalDateTime> firstSentByApp = new LinkedHashMap<>();
-                for (ApplicationEvent event : applicationEventRepository.findEarliestEventByApplicationIds(userId,
-                                ApplicationStatus.SENT.name(), applicationIds, from, to)) {
-                        firstSentByApp.putIfAbsent(event.getApplication().getId(), event.getOccurredAt());
-                }
                 Map<Long, LocalDateTime> firstRespondedByApp = new LinkedHashMap<>();
-                for (ApplicationEvent event : applicationEventRepository.findEarliestEventByApplicationIds(userId,
-                                ApplicationStatus.RESPONDED.name(), applicationIds, from, to)) {
-                        firstRespondedByApp.putIfAbsent(event.getApplication().getId(), event.getOccurredAt());
+                for (StatsEventTimeDto event : applicationEventRepository.findEarliestEventsByApplicationIdsAndStatuses(
+                                userId, List.of(ApplicationStatus.SENT.name(), ApplicationStatus.RESPONDED.name()),
+                                applicationIds, from, to)) {
+                        if (ApplicationStatus.SENT.name().equals(event.status())) {
+                                firstSentByApp.put(event.applicationId(), event.occurredAt());
+                        } else if (ApplicationStatus.RESPONDED.name().equals(event.status())) {
+                                firstRespondedByApp.put(event.applicationId(), event.occurredAt());
+                        }
                 }
 
                 List<Double> daysPerApplication = new ArrayList<>();
@@ -261,7 +249,6 @@ public class StatsService {
                                 .orElse(0.0);
         }
 
-        
         private LocalDateTime previousPeriodFrom(LocalDateTime from, LocalDateTime to) {
                 if (from == null || to == null) {
                         return DateRangeUtils.effectiveFrom(null);
@@ -270,7 +257,6 @@ public class StatsService {
                 return from.minusDays(days);
         }
 
-      
         private LocalDateTime previousPeriodTo(LocalDateTime from, LocalDateTime to) {
                 if (from == null || to == null) {
                         return DateRangeUtils.effectiveTo(null);
@@ -278,17 +264,4 @@ public class StatsService {
                 return from.minusNanos(1_000_000L);
         }
 
-     
-
-        private TimelineEventDto toDto(ApplicationEvent event) {
-                return TimelineEventDto.builder()
-                                .id(event.getId())
-                                .applicationId(event.getApplication().getId())
-                                .status(event.getStatus())
-                                .note(event.getNote())
-                                .occurredAt(event.getOccurredAt())
-                                .companyName(event.getApplication().getCompanyName())
-                                .jobTitle(event.getApplication().getJobTitle())
-                                .build();
-        }
 }

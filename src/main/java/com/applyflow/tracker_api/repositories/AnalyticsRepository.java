@@ -37,7 +37,8 @@ public interface AnalyticsRepository extends JpaRepository<Application, Long> {
                         "FROM Application a LEFT JOIN a.cvVariant cv " +
                         "WHERE a.user.id = :userId " +
                         "AND a.dateApplied >= :from AND a.dateApplied <= :to " +
-                        "GROUP BY cv.name")
+                        "GROUP BY cv.name " +
+                        "ORDER BY COUNT(a) DESC, cv.name ASC")
         List<StatMetricDto> getStatsByCvVariant(@Param("userId") Long userId,
                         @Param("successStatuses") List<String> successStatuses,
                         @Param("from") LocalDateTime from,
@@ -52,7 +53,8 @@ public interface AnalyticsRepository extends JpaRepository<Application, Long> {
                         "FROM Application a " +
                         "WHERE a.user.id = :userId " +
                         "AND a.dateApplied >= :from AND a.dateApplied <= :to " +
-                        "GROUP BY a.language")
+                        "GROUP BY a.language " +
+                        "ORDER BY COUNT(a) DESC, a.language ASC")
         List<StatMetricDto> getStatsByLanguage(@Param("userId") Long userId,
                         @Param("successStatuses") List<String> successStatuses,
                         @Param("from") LocalDateTime from,
@@ -67,7 +69,8 @@ public interface AnalyticsRepository extends JpaRepository<Application, Long> {
                         "FROM Application a " +
                         "WHERE a.user.id = :userId " +
                         "AND a.dateApplied >= :from AND a.dateApplied <= :to " +
-                        "GROUP BY a.jobTitle")
+                        "GROUP BY a.jobTitle " +
+                        "ORDER BY COUNT(a) DESC, a.jobTitle ASC")
         List<StatMetricDto> getStatsByJobTitle(@Param("userId") Long userId,
                         @Param("successStatuses") List<String> successStatuses,
                         @Param("from") LocalDateTime from,
@@ -84,7 +87,8 @@ public interface AnalyticsRepository extends JpaRepository<Application, Long> {
                         "FROM Application a LEFT JOIN a.template t " +
                         "WHERE a.user.id = :userId " +
                         "AND a.dateApplied >= :from AND a.dateApplied <= :to " +
-                        "GROUP BY t.name")
+                        "GROUP BY t.name " +
+                        "ORDER BY COUNT(a) DESC, t.name ASC")
         List<StatMetricDto> getStatsByTemplate(@Param("userId") Long userId,
                         @Param("successStatuses") List<String> successStatuses,
                         @Param("from") LocalDateTime from,

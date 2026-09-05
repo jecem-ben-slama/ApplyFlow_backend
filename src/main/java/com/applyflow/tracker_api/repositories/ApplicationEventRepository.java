@@ -1,6 +1,9 @@
 package com.applyflow.tracker_api.repositories;
 
 import com.applyflow.tracker_api.models.ApplicationEvent;
+import com.applyflow.tracker_api.dtos.StatsEventTimeDto;
+import com.applyflow.tracker_api.dtos.StatsStatusCountDto;
+import com.applyflow.tracker_api.dtos.TimelineEventDto;
 
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -14,6 +17,19 @@ public interface ApplicationEventRepository extends JpaRepository<ApplicationEve
 
         // Full history for one application's timeline view.
         List<ApplicationEvent> findByApplicationIdOrderByOccurredAtAsc(Long applicationId);
+
+        @Query("""
+                        SELECT new com.applyflow.tracker_api.dtos.TimelineEventDto(
+                                e.id, e.application.id, e.status, e.note, e.occurredAt,
+                                e.application.companyName, e.application.jobTitle)
+                        FROM ApplicationEvent e
+                        WHERE e.application.id = :applicationId
+                        AND e.application.user.id = :userId
+                        ORDER BY e.occurredAt ASC
+                        """)
+        List<TimelineEventDto> findTimelineDtosByApplicationIdAndUserId(
+                        @Param("applicationId") Long applicationId,
+                        @Param("userId") Long userId);
 
         // All events of a given status for a user, earliest first — used to find each
         // application's *first* time reaching that status (e.g. first SENT, first
@@ -29,6 +45,16 @@ public interface ApplicationEventRepository extends JpaRepository<ApplicationEve
                         ORDER BY e.occurredAt DESC
                         """)
         List<ApplicationEvent> findRecentByUser(@Param("userId") Long userId, Pageable pageable);
+
+        @Query("""
+                        SELECT new com.applyflow.tracker_api.dtos.TimelineEventDto(
+                                e.id, e.application.id, e.status, e.note, e.occurredAt,
+                                e.application.companyName, e.application.jobTitle)
+                        FROM ApplicationEvent e
+                        WHERE e.application.user.id = :userId
+                        ORDER BY e.occurredAt DESC
+                        """)
+        List<TimelineEventDto> findRecentDtosByUser(@Param("userId") Long userId, Pageable pageable);
 
         // Distinct application count per status, for the funnel (unfiltered case).
         // from/to are always non-null effective bounds (resolved by the service via
@@ -83,6 +109,20 @@ public interface ApplicationEventRepository extends JpaRepository<ApplicationEve
                         @Param("from") LocalDateTime from,
                         @Param("to") LocalDateTime to);
 
+        @Query("""
+                        SELECT DISTINCT e.application.id
+                        FROM ApplicationEvent e
+                        WHERE e.application.user.id = :userId
+                        AND e.status = :status
+                        AND e.occurredAt >= :from
+                        AND e.occurredAt <= :to
+                        """)
+        List<Long> findDistinctApplicationIdsByUserAndStatusInRange(
+                        @Param("userId") Long userId,
+                        @Param("status") String status,
+                        @Param("from") LocalDateTime from,
+                        @Param("to") LocalDateTime to);
+
         // appIds is always non-null and non-empty here — callers in StatsService
         // guard against null/empty applicationIds before invoking this method.
         // (Previously used "(:appIds IS NULL OR ...)" which made Postgres unable to
@@ -104,6 +144,24 @@ public interface ApplicationEventRepository extends JpaRepository<ApplicationEve
                         @Param("from") LocalDateTime from,
                         @Param("to") LocalDateTime to);
 
+        @Query("""
+                        SELECT new com.applyflow.tracker_api.dtos.StatsStatusCountDto(
+                                e.status, COUNT(DISTINCT e.application.id))
+                        FROM ApplicationEvent e
+                        WHERE e.application.user.id = :userId
+                        AND e.application.id IN :appIds
+                        AND e.status IN :statuses
+                        AND e.occurredAt >= :from
+                        AND e.occurredAt <= :to
+                        GROUP BY e.status
+                        """)
+        List<StatsStatusCountDto> countDistinctApplicationsByStatusesAndApplicationIds(
+                        @Param("userId") Long userId,
+                        @Param("statuses") List<String> statuses,
+                        @Param("appIds") List<Long> applicationIds,
+                        @Param("from") LocalDateTime from,
+                        @Param("to") LocalDateTime to);
+
         // Same appIds guarantee as above — callers always pass a non-null,
         // non-empty list.
         @Query("""
@@ -121,6 +179,33 @@ public interface ApplicationEventRepository extends JpaRepository<ApplicationEve
                         @Param("appIds") List<Long> applicationIds,
                         @Param("from") LocalDateTime from,
                         @Param("to") LocalDateTime to);
+
+        @Query("""
+                        SELECT new com.applyflow.tracker_api.dtos.StatsEventTimeDto(
+                                e.application.id, e.status, MIN(e.occurredAt))
+                        FROM ApplicationEvent e
+                        WHERE e.application.user.id = :userId
+                        AND e.application.id IN :appIds
+                        AND e.status IN :statuses
+                        AND e.occurredAt >= :from
+                        AND e.occurredAt <= :to
+                        GROUP BY e.application.id, e.status
+                        """)
+        List<StatsEventTimeDto> findEarliestEventsByApplicationIdsAndStatuses(
+                        @Param("userId") Long userId,
+                        @Param("statuses") List<String> statuses,
+                        @Param("appIds") List<Long> applicationIds,
+                        @Param("from") LocalDateTime from,
+                        @Param("to") LocalDateTime to);
+
+        @Query("""
+                        SELECT DISTINCT e.application.id
+                        FROM ApplicationEvent e
+                        WHERE e.application.id IN :appIds
+                        AND e.status IN :statuses
+                        """)
+        List<Long> findApplicationIdsWithStatuses(@Param("appIds") List<Long> applicationIds,
+                        @Param("statuses") List<String> statuses);
 
         // Batch fetch of full event history for a set of applications, grouped
         // in-memory by application id by the caller. Replaces the per-application

@@ -2,6 +2,7 @@ package com.applyflow.tracker_api.services;
 
 import com.applyflow.tracker_api.dtos.ApplicationSummaryDto;
 import com.applyflow.tracker_api.dtos.StatMetricDto;
+import com.applyflow.tracker_api.models.ApplicationStatus;
 import com.applyflow.tracker_api.repositories.AnalyticsRepository;
 import com.applyflow.tracker_api.repositories.ApplicationRepository;
 import com.applyflow.tracker_api.utils.DateRangeUtils;
@@ -12,6 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Locale;
 
 @Service
 @RequiredArgsConstructor
@@ -25,33 +27,33 @@ public class AnalyticsService {
     @Transactional(readOnly = true)
     public List<StatMetricDto> getCvVariantStats(Long userId, List<String> successStatuses,
             LocalDateTime from, LocalDateTime to) {
+        AnalyticsRange range = resolveRange(from, to);
         return calculateRates(analyticsRepository.getStatsByCvVariant(
-                userId, resolveSuccessStatuses(successStatuses),
-                DateRangeUtils.effectiveFrom(from), DateRangeUtils.effectiveTo(to)));
+                userId, resolveSuccessStatuses(successStatuses), range.from(), range.to()));
     }
 
     @Transactional(readOnly = true)
     public List<StatMetricDto> getLanguageStats(Long userId, List<String> successStatuses,
             LocalDateTime from, LocalDateTime to) {
+        AnalyticsRange range = resolveRange(from, to);
         return calculateRates(analyticsRepository.getStatsByLanguage(
-                userId, resolveSuccessStatuses(successStatuses),
-                DateRangeUtils.effectiveFrom(from), DateRangeUtils.effectiveTo(to)));
+                userId, resolveSuccessStatuses(successStatuses), range.from(), range.to()));
     }
 
     @Transactional(readOnly = true)
     public List<StatMetricDto> getJobTitleStats(Long userId, List<String> successStatuses,
             LocalDateTime from, LocalDateTime to) {
+        AnalyticsRange range = resolveRange(from, to);
         return calculateRates(analyticsRepository.getStatsByJobTitle(
-                userId, resolveSuccessStatuses(successStatuses),
-                DateRangeUtils.effectiveFrom(from), DateRangeUtils.effectiveTo(to)));
+                userId, resolveSuccessStatuses(successStatuses), range.from(), range.to()));
     }
 
     @Transactional(readOnly = true)
     public List<StatMetricDto> getTemplateStats(Long userId, List<String> successStatuses,
             LocalDateTime from, LocalDateTime to) {
+        AnalyticsRange range = resolveRange(from, to);
         return calculateRates(analyticsRepository.getStatsByTemplate(
-                userId, resolveSuccessStatuses(successStatuses),
-                DateRangeUtils.effectiveFrom(from), DateRangeUtils.effectiveTo(to)));
+                userId, resolveSuccessStatuses(successStatuses), range.from(), range.to()));
     }
 
     @Transactional(readOnly = true)
@@ -60,7 +62,28 @@ public class AnalyticsService {
     }
 
     private List<String> resolveSuccessStatuses(List<String> requested) {
-        return (requested == null || requested.isEmpty()) ? DEFAULT_SUCCESS_STATUSES : requested;
+        if (requested == null || requested.isEmpty()) {
+            return DEFAULT_SUCCESS_STATUSES;
+        }
+
+        return requested.stream()
+                .map(status -> status == null ? "" : status.trim().toUpperCase(Locale.ROOT))
+                .distinct()
+                .peek(status -> {
+                    if (!ApplicationStatus.isValid(status)) {
+                        throw new IllegalArgumentException("Invalid application status: " + status);
+                    }
+                })
+                .toList();
+    }
+
+    private AnalyticsRange resolveRange(LocalDateTime from, LocalDateTime to) {
+        return new AnalyticsRange(
+                DateRangeUtils.effectiveFrom(from),
+                DateRangeUtils.effectiveTo(to));
+    }
+
+    private record AnalyticsRange(LocalDateTime from, LocalDateTime to) {
     }
 
     private List<StatMetricDto> calculateRates(List<StatMetricDto> stats) {
