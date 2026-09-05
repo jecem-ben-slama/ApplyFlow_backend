@@ -1,13 +1,10 @@
 package com.applyflow.tracker_api.services.storage;
 
-import com.applyflow.tracker_api.config.SecurityContextService;
-import com.applyflow.tracker_api.models.User;
-import com.applyflow.tracker_api.repositories.UserRepository;
-import com.applyflow.tracker_api.services.OAuth2TokenManager;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.core.io.InputStreamSource;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
@@ -18,15 +15,27 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestTemplate;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+/**
+ * Google Drive-specific concerns only: parsing Drive share links, calling
+ * the Drive API for metadata/bytes, and translating Drive's error responses
+ * into user-facing messages. File-type/size rules live in
+ * CvFileValidationPolicy, and OAuth token provisioning + guest-check logic
+ * lives in GoogleOAuthTokenProvider — both injected rather than
+ * reimplemented here.
+ */
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class GoogleDriveStorageService implements CvStorageService {
-
-    private static final String ACCEPTED_MIME_TYPE = "application/pdf";
 
     // Only the standard public "Share > Copy link" format is accepted:
     // https://drive.google.com/file/d/{fileId}/view?usp=sharing (query string
@@ -35,49 +44,33 @@ public class GoogleDriveStorageService implements CvStorageService {
             .compile("^https://drive\\.google\\.com/file/d/([a-zA-Z0-9_-]+)/view(?:\\?.*)?$");
 
     private final RestTemplate restTemplate = new RestTemplate();
-    private final SecurityContextService securityContextService;
-    private final UserRepository userRepository;
-    private final OAuth2TokenManager tokenManager;
+    private final HttpClient httpClient = HttpClient.newHttpClient();
+    private final GoogleOAuthTokenProvider tokenProvider;
+    private final CvFileValidationPolicy validationPolicy;
 
     @Override
     public void validateFile(String fileUrl) {
-        // Runs the same link-format, access, and type checks as downloadFile,
-        // minus the actual byte download. Throws IllegalArgumentException
-        // with a specific, user-facing reason on any problem.
+        // Runs the same link-format, access, type, and size checks as
+        // downloadFile, minus the actual byte download. Throws
+        // IllegalArgumentException with a specific, user-facing reason on
+        // any problem.
         resolveAndValidateMetadata(fileUrl);
     }
 
     @Override
-    public byte[] downloadFile(String fileUrl) {
+    public InputStreamSource downloadFile(String fileUrl) {
 
+        // Validate up front so a bad/oversized/inaccessible link fails fast,
+        // before we ever return a source to the caller.
         String fileId = resolveAndValidateMetadata(fileUrl);
-        String accessToken = getFreshTokenForCurrentUser();
 
-        // Download the actual bytes
-        String downloadUrl = "https://www.googleapis.com/drive/v3/files/" + fileId + "?alt=media";
-
-        HttpHeaders headers = new HttpHeaders();
-        headers.setBearerAuth(accessToken);
-        HttpEntity<String> entity = new HttpEntity<>(headers);
-
-        try {
-            ResponseEntity<byte[]> response = restTemplate.exchange(
-                    downloadUrl,
-                    HttpMethod.GET,
-                    entity,
-                    byte[].class);
-            return response.getBody();
-        } catch (HttpClientErrorException e) {
-            if (isPermissionOrNotFoundError(e.getStatusCode())) {
-                log.warn("Access denied downloading Drive file bytes. fileId={}, status={}", fileId, e.getStatusCode());
-                throw notAccessibleException();
-            }
-            log.error("Failed to download byte stream from Google Drive for File ID: {}", fileId, e);
-            throw new RuntimeException("Google Drive CV download failed: " + e.getMessage(), e);
-        } catch (Exception e) {
-            log.error("Failed to download byte stream from Google Drive for File ID: {}", fileId, e);
-            throw new RuntimeException("Google Drive CV download failed: " + e.getMessage(), e);
-        }
+        // Lazy + re-openable: nothing is fetched until getInputStream() is
+        // called, and each call opens a fresh connection. This matters
+        // because JavaMail's DataHandler may read the stream more than once
+        // (e.g. once to sniff content, once to write it out) — a one-shot
+        // InputStream would silently produce a truncated attachment on the
+        // second read.
+        return () -> openDriveMediaStream(fileId);
     }
 
     @Override
@@ -85,28 +78,66 @@ public class GoogleDriveStorageService implements CvStorageService {
         return fileUrl != null && fileUrl.contains("drive.google.com");
     }
 
+    private InputStream openDriveMediaStream(String fileId) {
+        String accessToken = tokenProvider.getFreshTokenForCurrentUser();
+        String downloadUrl = "https://www.googleapis.com/drive/v3/files/" + fileId + "?alt=media";
+
+        try {
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(downloadUrl))
+                    .header("Authorization", "Bearer " + accessToken)
+                    .GET()
+                    .build();
+
+            HttpResponse<InputStream> response = httpClient.send(
+                    request, HttpResponse.BodyHandlers.ofInputStream());
+
+            int status = response.statusCode();
+            if (status == HttpStatus.FORBIDDEN.value() || status == HttpStatus.NOT_FOUND.value()) {
+                log.warn("Access denied downloading Drive file bytes. fileId={}, status={}", fileId, status);
+                throw notAccessibleException();
+            }
+            if (status != HttpStatus.OK.value()) {
+                log.error("Unexpected status downloading Drive file bytes. fileId={}, status={}", fileId, status);
+                throw new RuntimeException("Google Drive CV download failed with status " + status);
+            }
+
+            return response.body();
+        } catch (IOException | InterruptedException e) {
+            if (e instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+            }
+            log.error("Failed to open byte stream from Google Drive for File ID: {}", fileId, e);
+            throw new RuntimeException("Google Drive CV download failed: " + e.getMessage(), e);
+        }
+    }
+
     /**
-     * Parses the URL, fetches metadata, and confirms it's a PDF.
-     * Returns the fileId on success. Throws IllegalArgumentException with a
-     * clear, specific reason on any failure — shared by validateFile()
-     * (add/edit time) and downloadFile() (send time), so both moments give
-     * the user the same precise explanation.
+     * Parses the URL, fetches metadata, and delegates to the validation
+     * policy to confirm type/size. Returns the fileId on success. Throws
+     * IllegalArgumentException with a clear, specific reason on any failure
+     * — shared by validateFile() (add/edit time) and downloadFile() (send
+     * time), so both moments give the user the same precise explanation,
+     * and so a file swapped out for something larger/wrong-typed after
+     * being added is still caught right before it's actually fetched.
      */
     private String resolveAndValidateMetadata(String fileUrl) {
         String fileId = extractFileIdFromUrl(fileUrl);
-        String accessToken = getFreshTokenForCurrentUser();
+        String accessToken = tokenProvider.getFreshTokenForCurrentUser();
 
         DriveFileMetadata metadata = getFileMetadata(fileId, accessToken);
-        if (metadata == null || metadata.getMimeType() == null) {
+        if (metadata == null) {
             throw new IllegalArgumentException("Unable to determine file type for this Google Drive file.");
         }
-        if (!ACCEPTED_MIME_TYPE.equals(metadata.getMimeType())) {
+        if (metadata.getMimeType() == null || !"application/pdf".equals(metadata.getMimeType())) {
             log.warn("Rejected non-PDF Drive file. fileId={}, name={}, mimeType={}",
                     fileId, metadata.getName(), metadata.getMimeType());
-            throw new IllegalArgumentException(
-                    "Only PDF files are supported. This file is: " + metadata.getMimeType()
-                            + (metadata.getName() != null ? " (" + metadata.getName() + ")" : ""));
         }
+
+        // Delegates the actual type/size decision (and its exact wording)
+        // to the shared policy, so the rules stay identical across every
+        // storage provider instead of being reimplemented per provider.
+        validationPolicy.validate(metadata.getMimeType(), metadata.getSize(), metadata.getName());
         return fileId;
     }
 
@@ -136,7 +167,7 @@ public class GoogleDriveStorageService implements CvStorageService {
     }
 
     private DriveFileMetadata getFileMetadata(String fileId, String accessToken) {
-        String metaUrl = "https://www.googleapis.com/drive/v3/files/" + fileId + "?fields=id,name,mimeType";
+        String metaUrl = "https://www.googleapis.com/drive/v3/files/" + fileId + "?fields=id,name,mimeType,size";
 
         HttpHeaders headers = new HttpHeaders();
         headers.setBearerAuth(accessToken);
@@ -177,38 +208,12 @@ public class GoogleDriveStorageService implements CvStorageService {
                         + "and that the link hasn't been revoked or the file deleted.");
     }
 
-    private IllegalArgumentException guestNotSupportedException() {
-        return new IllegalArgumentException(
-                "Attaching a CV from Google Drive requires a Google account. "
-                        + "Guest sessions aren't linked to Google Drive yet — "
-                        + "sign in with Google to connect your Drive and attach CVs.");
-    }
-
-    private String getFreshTokenForCurrentUser() {
-        Long currentUserId = securityContextService.getCurrentUserId();
-
-        User user = userRepository.findById(currentUserId)
-                .orElseThrow(() -> new RuntimeException("Authenticated user not found in database: " + currentUserId));
-
-        // Guests never go through the Google OAuth flow, so they have no
-        // access/refresh token to work with. Without this check,
-        // tokenManager.getValidAccessToken(user) would be handed a user with
-        // null tokens and fail with an opaque internal error instead of a
-        // clear, actionable message.
-        if (Boolean.TRUE.equals(user.getIsGuest())) {
-            log.info("Guest user {} attempted to use Google Drive CV storage", user.getId());
-            throw guestNotSupportedException();
-        }
-
-        log.info("Provisioning fresh access token for user: {} via Security Context", user.getEmail());
-        return tokenManager.getValidAccessToken(user);
-    }
-
     @Data
     @JsonIgnoreProperties(ignoreUnknown = true)
     private static class DriveFileMetadata {
         private String id;
         private String name;
         private String mimeType;
+        private Long size; // Drive returns this as a string in JSON; Jackson coerces to Long fine
     }
 }
