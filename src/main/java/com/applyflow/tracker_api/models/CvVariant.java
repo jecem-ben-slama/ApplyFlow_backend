@@ -5,8 +5,7 @@ import lombok.*;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "cv_variants", uniqueConstraints = @UniqueConstraint(name = "uq_cv_variant_user_name", columnNames = {
-        "user_id", "name" }))
+@Table(name = "cv_variants")
 @Getter
 @Setter
 @NoArgsConstructor

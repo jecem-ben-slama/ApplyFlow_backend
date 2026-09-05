@@ -5,7 +5,6 @@ import com.applyflow.tracker_api.repositories.CvVariantRepository;
 import com.applyflow.tracker_api.services.storage.CvStorageFactory;
 import com.applyflow.tracker_api.services.storage.CvStorageService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
@@ -22,22 +21,8 @@ public class CvVariantService {
 
     @Transactional
     public CvVariant createCvVariant(CvVariant cvVariant) {
-        Long userId = cvVariant.getUser().getId();
-
-        if (cvVariantRepository.existsByUserIdAndNameIgnoreCase(userId, cvVariant.getName())) {
-            throw new IllegalStateException(
-                    "You already have a CV named \"" + cvVariant.getName());
-        }
-
         validateFileUrl(cvVariant.getFileUrl());
-
-        try {
-            return cvVariantRepository.save(cvVariant);
-        } catch (DataIntegrityViolationException ex) {
-            // Safety net for a race condition between the check above and the save
-            throw new IllegalStateException(
-                    "You already have a CV named \"" + cvVariant.getName());
-        }
+        return cvVariantRepository.save(cvVariant);
     }
 
     @Transactional(readOnly = true)
@@ -56,23 +41,13 @@ public class CvVariantService {
     public CvVariant updateCvVariant(Long id, Long userId, CvVariant details) {
         CvVariant existing = getCvVariantByIdAndUser(id, userId);
 
-        if (cvVariantRepository.existsByUserIdAndNameIgnoreCaseAndIdNot(userId, details.getName(), id)) {
-            throw new IllegalStateException(
-                    "You already have a CV named \"" + details.getName());
-        }
-
         validateFileUrl(details.getFileUrl());
 
         existing.setName(details.getName());
         existing.setLanguage(details.getLanguage());
         existing.setFileUrl(details.getFileUrl());
 
-        try {
-            return cvVariantRepository.save(existing);
-        } catch (DataIntegrityViolationException ex) {
-            throw new IllegalStateException(
-                    "You already have a CV named \"" + details.getName());
-        }
+        return cvVariantRepository.save(existing);
     }
 
     @Transactional

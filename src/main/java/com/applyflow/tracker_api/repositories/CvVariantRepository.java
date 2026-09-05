@@ -16,10 +16,6 @@ public interface CvVariantRepository extends JpaRepository<CvVariant, Long> {
 
   Optional<CvVariant> findByIdAndUserId(Long id, Long userId);
 
-  boolean existsByUserIdAndNameIgnoreCase(Long userId, String name);
-
-  boolean existsByUserIdAndNameIgnoreCaseAndIdNot(Long userId, String name, Long id);
-
   @Modifying(clearAutomatically = true, flushAutomatically = true)
   @Query("UPDATE CvVariant c SET c.user = :realUser WHERE c.user.id = :guestId")
   void reassignOwner(@Param("guestId") Long guestId, @Param("realUser") User realUser);

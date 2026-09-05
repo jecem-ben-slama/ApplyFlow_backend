@@ -18,7 +18,7 @@ public class ApplicationEventService {
     private final ApplicationEventRepository applicationEventRepository;
 
     private static final Set<String> TERMINAL_STATES = Set.of(
-            "REJECTED", "GHOSTED", "WITHDRAWN");
+            "REJECTED", "WITHDRAWN");
 
     @Transactional
     public void recordEvent(Application application, String status, String note) {
@@ -40,6 +40,11 @@ public class ApplicationEventService {
 
         if (normalizedOld.equals(normalizedNew)) {
             return false;
+        }
+
+        // Ghosted applications can be moved back into any other valid status.
+        if (normalizedOld.equals("GHOSTED")) {
+            return true;
         }
 
         // If current status is already terminal, no further transitions allowed
